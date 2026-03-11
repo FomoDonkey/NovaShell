@@ -290,7 +290,7 @@ body {
   border-bottom: 1px solid var(--border-color);
   padding: 0 8px;
   gap: 2px;
-  overflow-x: auto;
+  overflow: visible;
   transition: var(--transition-normal);
 }
 
@@ -453,6 +453,23 @@ body {
 .terminal-instance .xterm-viewport::-webkit-scrollbar-thumb {
   background: var(--text-muted);
   border-radius: 4px;
+}
+
+.sidebar-resize-handle {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 4px;
+  cursor: col-resize;
+  background: transparent;
+  z-index: 10;
+  transition: background 0.15s ease;
+}
+
+.sidebar-resize-handle:hover,
+.sidebar-resize-handle:active {
+  background: var(--accent-primary);
 }
 
 .sidebar {
