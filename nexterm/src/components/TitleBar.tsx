@@ -38,7 +38,7 @@ export function TitleBar() {
       <div className="titlebar-left">
         <div className="titlebar-logo">
           <Terminal size={18} />
-          <span>NovaShell</span>
+          <span>NovaTerm</span>
         </div>
         <div className="theme-selector">
           {themes.map((t) => (

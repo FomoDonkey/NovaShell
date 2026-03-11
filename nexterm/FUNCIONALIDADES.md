@@ -1,4 +1,4 @@
-# NexTerm - Documentacion Completa de Funcionalidades
+# NovaTerm - Documentacion Completa de Funcionalidades
 
 ## Estado General del Proyecto
 
@@ -26,7 +26,7 @@
 
 ### 2. Barra de Titulo Custom (TitleBar)
 **Estado: COMPLETO**
-- Logo "NexTerm" con degradado animado.
+- Logo "NovaTerm" con degradado animado.
 - Selector de temas con 4 puntos de color (indicador visual del tema activo).
 - Boton Focus Mode (oculta chrome de la UI para concentracion).
 - Boton Toggle Sidebar (abre/cierra panel lateral).

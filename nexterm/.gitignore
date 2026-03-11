@@ -5,20 +5,61 @@ node_modules/
 dist/
 src-tauri/target/
 
+# Generated bundles/installers
+src-tauri/gen/
+
 # IDE
 .vscode/
 .idea/
+*.swp
+*.swo
+*~
 
 # OS files
 .DS_Store
+.DS_Store?
+._*
 Thumbs.db
+ehthumbs.db
+Desktop.ini
 
-# Environment
+# Environment & secrets
 .env
-.env.local
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.pfx
 
-# Claude
+# Claude Code
 .claude/
 
 # Logs
 *.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Runtime data
+pids
+*.pid
+*.seed
+*.pid.lock
+
+# Rust
+**/*.rs.bk
+
+# TypeScript
+*.tsbuildinfo
+
+# Optional npm cache
+.npm
+.eslintcache
+
+# Task tracking (local only)
+tasks/
+
+# Tauri signing keys
+*.key
+tauri-signing-*

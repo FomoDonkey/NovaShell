@@ -9,6 +9,10 @@ on:
 permissions:
   contents: write
 
+env:
+  CARGO_INCREMENTAL: 0
+  RUST_BACKTRACE: short
+
 jobs:
   build:
     strategy:
@@ -17,14 +21,19 @@ jobs:
         include:
           - platform: windows-latest
             target: x86_64-pc-windows-msvc
-          - platform: macos-latest
+            label: Windows x64
+          - platform: macos-13
             target: x86_64-apple-darwin
-          - platform: macos-latest
+            label: macOS Intel
+          - platform: macos-14
             target: aarch64-apple-darwin
+            label: macOS ARM
           - platform: ubuntu-22.04
             target: x86_64-unknown-linux-gnu
+            label: Linux x64
 
     runs-on: ${{ matrix.platform }}
+    name: Build (${{ matrix.label }})
 
     steps:
       - name: Checkout
@@ -35,35 +44,66 @@ jobs:
         with:
           node-version: 20
           cache: npm
+          cache-dependency-path: nexterm/package-lock.json
 
       - name: Install Rust stable
         uses: dtolnay/rust-toolchain@stable
         with:
           targets: ${{ matrix.target }}
 
+      - name: Cache Rust dependencies
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            nexterm/src-tauri/target/
+          key: ${{ runner.os }}-${{ matrix.target }}-cargo-${{ hashFiles('nexterm/src-tauri/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-${{ matrix.target }}-cargo-
+
       - name: Install Linux dependencies
-        if: matrix.platform == 'ubuntu-22.04'
+        if: runner.os == 'Linux'
         run: |
           sudo apt-get update
           sudo apt-get install -y \
             libwebkit2gtk-4.1-dev \
+            libjavascriptcoregtk-4.1-dev \
             build-essential \
             curl \
             wget \
+            file \
             libssl-dev \
             libgtk-3-dev \
             libayatana-appindicator3-dev \
             librsvg2-dev \
+            libdbus-1-dev \
             patchelf
 
       - name: Install frontend dependencies
+        working-directory: nexterm
         run: npm ci
+
+      - name: Verify assets exist
+        working-directory: nexterm
+        shell: bash
+        run: |
+          echo "=== Checking fonts ==="
+          ls -la public/fonts/*.woff2
+          echo "=== Checking icons ==="
+          ls -la src-tauri/icons/icon.ico src-tauri/icons/icon.icns src-tauri/icons/icon.png
+          ls -la src-tauri/icons/32x32.png src-tauri/icons/128x128.png src-tauri/icons/128x128@2x.png
+          echo "=== All assets OK ==="
 
       - name: Build Tauri app
         uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
+          projectPath: nexterm
+          tauriScript: npx tauri
           tagName: ${{ github.ref_name }}
           releaseName: 'NovaTerm ${{ github.ref_name }}'
           releaseBody: |

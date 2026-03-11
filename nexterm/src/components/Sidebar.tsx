@@ -222,12 +222,12 @@ function PreviewPanel() {
       setPreviewFile({ name: file.name, content, extension: file.extension });
     } catch {
       const demoContent: Record<string, string> = {
-        json: '{\n  "name": "novashell",\n  "version": "1.0.0",\n  "description": "Professional Terminal"\n}',
-        md: "# NovaShell\n\n> Professional Terminal Emulator\n\n## Features\n- Multi-shell support\n- 4 themes\n- Split panes\n- Autocomplete",
+        json: '{\n  "name": "novaterm",\n  "version": "1.0.0",\n  "description": "Professional Terminal"\n}',
+        md: "# NovaTerm\n\n> Professional Terminal Emulator\n\n## Features\n- Multi-shell support\n- 4 themes\n- Split panes\n- Autocomplete",
         ts: 'import { useState } from "react";\n\nexport function App() {\n  const [count, setCount] = useState(0);\n  return <div>{count}</div>;\n}',
         css: ":root {\n  --bg-primary: #0d1117;\n  --text-primary: #e6edf3;\n  --accent: #58a6ff;\n}",
         csv: "Name,Age,City\nAlice,30,NYC\nBob,25,London\nCarla,28,Tokyo",
-        yaml: "app:\n  name: NovaShell\n  version: 1.0.0\n  theme: dark\n  plugins:\n    - git\n    - docker",
+        yaml: "app:\n  name: NovaTerm\n  version: 1.0.0\n  theme: dark\n  plugins:\n    - git\n    - docker",
       };
       setPreviewFile({
         name: file.name,

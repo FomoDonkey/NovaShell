@@ -466,9 +466,9 @@ function handleDemoCommand(terminal: Terminal, cmd: string) {
       terminal.writeln("  package.json  tsconfig.json  \x1b[32mvite.config.ts\x1b[0m");
     },
     neofetch: () => {
-      terminal.writeln("\x1b[1;34m        .--.        \x1b[0m  \x1b[1;36mNovaShell v1.0.0\x1b[0m");
+      terminal.writeln("\x1b[1;34m        .--.        \x1b[0m  \x1b[1;36mNovaTerm v1.0.0\x1b[0m");
       terminal.writeln("\x1b[1;34m       |o_o |       \x1b[0m  \x1b[33mOS:\x1b[0m Demo Mode");
-      terminal.writeln("\x1b[1;34m       |:_/ |       \x1b[0m  \x1b[33mShell:\x1b[0m NovaShell Demo");
+      terminal.writeln("\x1b[1;34m       |:_/ |       \x1b[0m  \x1b[33mShell:\x1b[0m NovaTerm Demo");
       terminal.writeln("\x1b[1;34m      //   \\ \\      \x1b[0m  \x1b[33mTerminal:\x1b[0m xterm.js");
       terminal.writeln("\x1b[1;34m     (|     | )     \x1b[0m  \x1b[33mTheme:\x1b[0m Adaptive");
       terminal.writeln("\x1b[1;34m    /'\\_   _/`\\     \x1b[0m  \x1b[33mFont:\x1b[0m JetBrains Mono");
