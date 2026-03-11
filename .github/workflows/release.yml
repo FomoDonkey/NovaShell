@@ -82,6 +82,16 @@ jobs:
             libdbus-1-dev \
             patchelf
 
+      - name: Install OpenSSL x86_64 for macOS Intel cross-compilation
+        if: matrix.target == 'x86_64-apple-darwin'
+        run: |
+          arch -x86_64 /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)" || true
+          arch -x86_64 /usr/local/bin/brew install openssl@3 || true
+          echo "OPENSSL_DIR=/usr/local/opt/openssl@3" >> $GITHUB_ENV
+          echo "OPENSSL_INCLUDE_DIR=/usr/local/opt/openssl@3/include" >> $GITHUB_ENV
+          echo "OPENSSL_LIB_DIR=/usr/local/opt/openssl@3/lib" >> $GITHUB_ENV
+          echo "PKG_CONFIG_ALLOW_CROSS=1" >> $GITHUB_ENV
+
       - name: Install frontend dependencies
         working-directory: nexterm
         run: npm ci
