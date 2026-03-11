@@ -22,12 +22,12 @@ jobs:
           - platform: windows-latest
             target: x86_64-pc-windows-msvc
             label: Windows x64
-          - platform: macos-13
-            target: x86_64-apple-darwin
-            label: macOS Intel
-          - platform: macos-14
+          - platform: macos-latest
             target: aarch64-apple-darwin
             label: macOS ARM
+          - platform: macos-latest
+            target: x86_64-apple-darwin
+            label: macOS Intel
           - platform: ubuntu-22.04
             target: x86_64-unknown-linux-gnu
             label: Linux x64
@@ -103,7 +103,6 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           projectPath: nexterm
-          tauriScript: npx tauri
           tagName: ${{ github.ref_name }}
           releaseName: 'NovaTerm ${{ github.ref_name }}'
           releaseBody: |
