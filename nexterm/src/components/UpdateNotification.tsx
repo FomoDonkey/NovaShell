@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useRef, memo } from "react";
+import { createPortal } from "react-dom";
 import { Download, X, RefreshCw, CheckCircle, AlertCircle, Loader } from "lucide-react";
 
 type UpdateStatus =
@@ -118,7 +119,7 @@ export const UpdateNotification = memo(function UpdateNotification() {
 
   // Minimized badge (small dot in corner)
   if (minimized && status.phase === "available") {
-    return (
+    return createPortal(
       <button
         onClick={() => setMinimized(false)}
         style={{
@@ -142,11 +143,12 @@ export const UpdateNotification = memo(function UpdateNotification() {
         title="Update available"
       >
         <Download size={16} />
-      </button>
+      </button>,
+      document.body
     );
   }
 
-  return (
+  return createPortal(
     <div style={{
       position: "fixed",
       bottom: 32,
@@ -373,6 +375,7 @@ export const UpdateNotification = memo(function UpdateNotification() {
           </>
         )}
       </div>
-    </div>
+    </div>,
+    document.body
   );
 });

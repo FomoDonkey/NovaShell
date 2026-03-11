@@ -185,35 +185,20 @@ jobs:
           BASE_URL="https://github.com/${REPO}/releases/download/${TAG}"
           DATE=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
 
-          # Find signature files and read them
-          WIN_NSIS_SIG=""
-          MACOS_ARM_SIG=""
-          MACOS_INTEL_SIG=""
-          LINUX_SIG=""
+          # Read signature files (contain multiline minisign data)
+          read_sig() {
+            local sig_file="$1"
+            if [ -f "$sig_file" ]; then
+              cat "$sig_file"
+            else
+              echo ""
+            fi
+          }
 
-          # Windows NSIS signature
-          SIG_FILE=$(find artifacts/windows-installers -name "*.exe.sig" 2>/dev/null | head -1)
-          if [ -f "$SIG_FILE" ]; then
-            WIN_NSIS_SIG=$(cat "$SIG_FILE")
-          fi
-
-          # macOS ARM signature
-          SIG_FILE=$(find artifacts/macos-arm-installers -name "*.app.tar.gz.sig" 2>/dev/null | head -1)
-          if [ -f "$SIG_FILE" ]; then
-            MACOS_ARM_SIG=$(cat "$SIG_FILE")
-          fi
-
-          # macOS Intel signature
-          SIG_FILE=$(find artifacts/macos-intel-installers -name "*.app.tar.gz.sig" 2>/dev/null | head -1)
-          if [ -f "$SIG_FILE" ]; then
-            MACOS_INTEL_SIG=$(cat "$SIG_FILE")
-          fi
-
-          # Linux AppImage signature
-          SIG_FILE=$(find artifacts/linux-installers -name "*.AppImage.sig" 2>/dev/null | head -1)
-          if [ -f "$SIG_FILE" ]; then
-            LINUX_SIG=$(cat "$SIG_FILE")
-          fi
+          WIN_NSIS_SIG=$(read_sig "$(find artifacts/windows-installers -name '*.exe.sig' 2>/dev/null | head -1)")
+          MACOS_ARM_SIG=$(read_sig "$(find artifacts/macos-arm-installers -name '*.app.tar.gz.sig' 2>/dev/null | head -1)")
+          MACOS_INTEL_SIG=$(read_sig "$(find artifacts/macos-intel-installers -name '*.app.tar.gz.sig' 2>/dev/null | head -1)")
+          LINUX_SIG=$(read_sig "$(find artifacts/linux-installers -name '*.AppImage.sig' 2>/dev/null | head -1)")
 
           # Find actual filenames
           WIN_NSIS=$(find artifacts/windows-installers -name "*.exe" ! -name "*.sig" 2>/dev/null | head -1 | xargs -r basename)
@@ -221,32 +206,30 @@ jobs:
           MACOS_INTEL_TAR=$(find artifacts/macos-intel-installers -name "*.app.tar.gz" ! -name "*.sig" 2>/dev/null | head -1 | xargs -r basename)
           LINUX_APPIMAGE=$(find artifacts/linux-installers -name "*.AppImage" ! -name "*.sig" 2>/dev/null | head -1 | xargs -r basename)
 
-          # Build the JSON
-          cat > latest.json << ENDJSON
-          {
-            "version": "${VERSION}",
-            "notes": "NovaTerm ${TAG} — see release notes for details.",
-            "pub_date": "${DATE}",
-            "platforms": {
-              "windows-x86_64": {
-                "signature": "${WIN_NSIS_SIG}",
-                "url": "${BASE_URL}/${WIN_NSIS}"
-              },
-              "darwin-aarch64": {
-                "signature": "${MACOS_ARM_SIG}",
-                "url": "${BASE_URL}/${MACOS_ARM_TAR}"
-              },
-              "darwin-x86_64": {
-                "signature": "${MACOS_INTEL_SIG}",
-                "url": "${BASE_URL}/${MACOS_INTEL_TAR}"
-              },
-              "linux-x86_64": {
-                "signature": "${LINUX_SIG}",
-                "url": "${BASE_URL}/${LINUX_APPIMAGE}"
+          # Build JSON with jq to properly escape multiline signatures
+          jq -n \
+            --arg version "$VERSION" \
+            --arg notes "NovaTerm ${TAG} — see release notes for details." \
+            --arg pub_date "$DATE" \
+            --arg win_sig "$WIN_NSIS_SIG" \
+            --arg win_url "${BASE_URL}/${WIN_NSIS}" \
+            --arg mac_arm_sig "$MACOS_ARM_SIG" \
+            --arg mac_arm_url "${BASE_URL}/${MACOS_ARM_TAR}" \
+            --arg mac_intel_sig "$MACOS_INTEL_SIG" \
+            --arg mac_intel_url "${BASE_URL}/${MACOS_INTEL_TAR}" \
+            --arg linux_sig "$LINUX_SIG" \
+            --arg linux_url "${BASE_URL}/${LINUX_APPIMAGE}" \
+            '{
+              version: $version,
+              notes: $notes,
+              pub_date: $pub_date,
+              platforms: {
+                "windows-x86_64": { signature: $win_sig, url: $win_url },
+                "darwin-aarch64": { signature: $mac_arm_sig, url: $mac_arm_url },
+                "darwin-x86_64": { signature: $mac_intel_sig, url: $mac_intel_url },
+                "linux-x86_64": { signature: $linux_sig, url: $linux_url }
               }
-            }
-          }
-          ENDJSON
+            }' > latest.json
 
           echo "Generated latest.json:"
           cat latest.json

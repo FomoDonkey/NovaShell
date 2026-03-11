@@ -154,25 +154,33 @@ fn get_git_branch(path: Option<String>) -> Result<String, String> {
         .or_else(|| std::env::current_dir().ok())
         .unwrap_or_else(|| std::path::PathBuf::from("."));
 
-    let mut cmd = std::process::Command::new("git");
-    cmd.args(["rev-parse", "--abbrev-ref", "HEAD"])
-        .current_dir(&dir)
-        .stdout(std::process::Stdio::piped())
-        .stderr(std::process::Stdio::piped());
+    // Read .git/HEAD directly instead of spawning a git process
+    // This prevents any console window flash on Windows
+    let git_head = find_git_head(&dir).ok_or("Not a git repository")?;
+    let content = std::fs::read_to_string(&git_head).map_err(|e| e.to_string())?;
+    let trimmed = content.trim();
 
-    // Prevent console window flash on Windows
-    #[cfg(target_os = "windows")]
-    {
-        use std::os::windows::process::CommandExt;
-        cmd.creation_flags(0x08000000); // CREATE_NO_WINDOW
-    }
-
-    let output = cmd.output().map_err(|e| e.to_string())?;
-
-    if output.status.success() {
-        Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
+    if let Some(branch) = trimmed.strip_prefix("ref: refs/heads/") {
+        Ok(branch.to_string())
+    } else if trimmed.len() >= 7 {
+        // Detached HEAD — return short hash
+        Ok(trimmed[..7].to_string())
     } else {
         Err("Not a git repository".to_string())
+    }
+}
+
+/// Walk up from `dir` to find .git/HEAD (supports nested project directories)
+fn find_git_head(start: &std::path::Path) -> Option<std::path::PathBuf> {
+    let mut current = start.to_path_buf();
+    loop {
+        let head = current.join(".git").join("HEAD");
+        if head.is_file() {
+            return Some(head);
+        }
+        if !current.pop() {
+            return None;
+        }
     }
 }
 
