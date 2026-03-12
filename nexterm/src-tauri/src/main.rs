@@ -512,21 +512,37 @@ fn run_command_output(command: String, args: Vec<String>) -> Result<String, Stri
         return Err(format!("Command '{}' is not in the allowed list", command));
     }
 
-    // On Windows, tools like npm/npx are installed as .cmd scripts,
-    // not .exe files. Command::new("npm") won't find them.
-    // Use cmd.exe /c as a wrapper so Windows can resolve .cmd/.bat files.
     #[cfg(windows)]
     let output = {
         use std::os::windows::process::CommandExt;
-        let mut cmd = std::process::Command::new("cmd");
-        cmd.arg("/c")
-            .arg(&command)
-            .args(&args)
-            .stdout(std::process::Stdio::piped())
-            .stderr(std::process::Stdio::piped())
-            .creation_flags(0x08000000); // CREATE_NO_WINDOW
-        cmd.output()
-            .map_err(|e| format!("Failed to run '{}': {}", command, e))?
+        const CREATE_NO_WINDOW: u32 = 0x08000000;
+
+        // Try direct execution first — works for .exe files (git, node, python, etc.)
+        let direct = {
+            let mut cmd = std::process::Command::new(&command);
+            cmd.args(&args)
+                .stdout(std::process::Stdio::piped())
+                .stderr(std::process::Stdio::piped())
+                .creation_flags(CREATE_NO_WINDOW);
+            cmd.output()
+        };
+
+        match direct {
+            Ok(out) => out,
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+                // Command not found as .exe — retry via cmd /c for .cmd/.bat scripts (npm, npx)
+                let mut cmd = std::process::Command::new("cmd");
+                cmd.arg("/c")
+                    .arg(&command)
+                    .args(&args)
+                    .stdout(std::process::Stdio::piped())
+                    .stderr(std::process::Stdio::piped())
+                    .creation_flags(CREATE_NO_WINDOW);
+                cmd.output()
+                    .map_err(|e2| format!("Failed to run '{}': {}", command, e2))?
+            }
+            Err(e) => return Err(format!("Failed to run '{}': {}", command, e)),
+        }
     };
 
     #[cfg(not(windows))]
