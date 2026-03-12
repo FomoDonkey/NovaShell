@@ -65,7 +65,7 @@ impl PtySession {
             let mut buf = [0u8; 8192];
             let mut batch = String::new();
             let mut last_flush = Instant::now();
-            let flush_interval = Duration::from_millis(8); // ~120fps max, prevents WebView flooding
+            let flush_interval = Duration::from_millis(33); // ~30fps — safe for multiple tabs without flooding WebView
             let event_name = format!("pty-data-{}", sid);
             let exit_event = format!("pty-exit-{}", sid);
             let error_event = format!("pty-error-{}", sid);
@@ -89,7 +89,7 @@ impl PtySession {
                     Ok(n) => {
                         batch.push_str(&String::from_utf8_lossy(&buf[..n]));
                         // Flush batch if enough time has passed or batch is large
-                        if last_flush.elapsed() >= flush_interval || batch.len() > 32768 {
+                        if last_flush.elapsed() >= flush_interval || batch.len() > 8192 {
                             let _ = app_handle.emit(&event_name, std::mem::take(&mut batch));
                             last_flush = Instant::now();
                         }

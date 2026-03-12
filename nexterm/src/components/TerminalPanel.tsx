@@ -241,8 +241,7 @@ export function TerminalPanel() {
         fontSize: 14,
         lineHeight: 1.4,
         cursorBlink: true,
-        cursorStyle: "bar",
-        cursorWidth: 2,
+        cursorStyle: "block",
         theme: colors,
         allowProposedApi: true,
         scrollback: 3000,
@@ -442,8 +441,8 @@ export function TerminalPanel() {
               setTimeout(() => {
                 let sourceCmd = "";
                 if (shellType === "powershell") {
-                  // Use & operator to run script file — . (dot-source) imports into current scope
-                  const escaped = scriptPath.replace(/\\/g, "\\\\").replace(/'/g, "''");
+                  // Dot-source imports into current scope. Only escape single quotes (backslashes are literal in PS single-quoted strings)
+                  const escaped = scriptPath.replace(/'/g, "''");
                   sourceCmd = `. '${escaped}'`;
                 } else if (shellType === "cmd") {
                   sourceCmd = `"${scriptPath}"`;
