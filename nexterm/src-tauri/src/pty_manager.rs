@@ -46,6 +46,9 @@ impl PtySession {
 
         cmd.env("TERM", "xterm-256color");
         cmd.env("COLORTERM", "truecolor");
+        cmd.env("CLICOLOR", "1");
+        cmd.env("CLICOLOR_FORCE", "1");
+        cmd.env("FORCE_COLOR", "3");
 
         let _child = pair.slave.spawn_command(cmd)?;
         drop(pair.slave);

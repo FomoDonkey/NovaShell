@@ -67,7 +67,8 @@ const themeColors: Record<string, Record<string, string>> = {
     foreground: "#e6edf3",
     cursor: "#58a6ff",
     cursorAccent: "#0d1117",
-    selectionBackground: "rgba(88,166,255,0.3)",
+    selectionBackground: "rgba(88,166,255,0.4)",
+    selectionForeground: "#ffffff",
     black: "#484f58", red: "#ff7b72", green: "#3fb950", yellow: "#d29922",
     blue: "#58a6ff", magenta: "#bc8cff", cyan: "#39d2c0", white: "#b1bac4",
     brightBlack: "#6e7681", brightRed: "#ffa198", brightGreen: "#56d364", brightYellow: "#e3b341",
@@ -78,7 +79,8 @@ const themeColors: Record<string, Record<string, string>> = {
     foreground: "#1f2328",
     cursor: "#0969da",
     cursorAccent: "#ffffff",
-    selectionBackground: "rgba(9,105,218,0.2)",
+    selectionBackground: "rgba(9,105,218,0.35)",
+    selectionForeground: "#000000",
     black: "#24292f", red: "#cf222e", green: "#1a7f37", yellow: "#9a6700",
     blue: "#0969da", magenta: "#8250df", cyan: "#1b7c83", white: "#6e7781",
     brightBlack: "#57606a", brightRed: "#a40e26", brightGreen: "#2da44e", brightYellow: "#bf8700",
@@ -89,7 +91,8 @@ const themeColors: Record<string, Record<string, string>> = {
     foreground: "#00ffcc",
     cursor: "#00ffcc",
     cursorAccent: "#0a0a1a",
-    selectionBackground: "rgba(0,255,204,0.2)",
+    selectionBackground: "rgba(0,255,204,0.35)",
+    selectionForeground: "#ffffff",
     black: "#333366", red: "#ff3366", green: "#00ffcc", yellow: "#ffcc00",
     blue: "#3399ff", magenta: "#cc66ff", cyan: "#00ccff", white: "#ccccff",
     brightBlack: "#666699", brightRed: "#ff6699", brightGreen: "#33ffdd", brightYellow: "#ffdd33",
@@ -100,7 +103,8 @@ const themeColors: Record<string, Record<string, string>> = {
     foreground: "#33ff33",
     cursor: "#33ff33",
     cursorAccent: "#1b2b1b",
-    selectionBackground: "rgba(51,255,51,0.2)",
+    selectionBackground: "rgba(51,255,51,0.35)",
+    selectionForeground: "#ffffff",
     black: "#0a150a", red: "#ff3333", green: "#33ff33", yellow: "#ccff33",
     blue: "#33ccff", magenta: "#33ffcc", cyan: "#66ff66", white: "#99cc99",
     brightBlack: "#448844", brightRed: "#ff6666", brightGreen: "#66ff66", brightYellow: "#ddff66",
@@ -240,6 +244,7 @@ export function TerminalPanel() {
         cursorStyle: "bar",
         theme: colors,
         allowProposedApi: true,
+        allowTransparency: true,
         scrollback: 3000,
         tabStopWidth: 4,
         rightClickSelectsWord: true,
@@ -329,6 +334,34 @@ export function TerminalPanel() {
 
         sessionId = await invoke<string>("create_pty_session", { shellPath });
         updateTab(tabId, { sessionId });
+
+        // Inject colored prompt based on shell type
+        const shellLower = shellPath.toLowerCase();
+        if (shellLower.includes("powershell")) {
+          // PowerShell: colored prompt with path in blue, arrow in green
+          const psPrompt = [
+            'function prompt { $p = $executionContext.SessionState.Path.CurrentLocation; Write-Host "" -NoNewline; Write-Host "$env:USERNAME" -ForegroundColor Cyan -NoNewline; Write-Host "@" -ForegroundColor DarkGray -NoNewline; Write-Host "$env:COMPUTERNAME" -ForegroundColor Magenta -NoNewline; Write-Host " " -NoNewline; Write-Host "$p" -ForegroundColor Blue -NoNewline; Write-Host " >" -ForegroundColor Green -NoNewline; return " " }',
+            '$Host.UI.RawUI.WindowTitle = "NovaShell"',
+            "Clear-Host",
+          ].join("; ");
+          invoke("write_to_pty", { sessionId, data: psPrompt + "\r" });
+        } else if (shellLower.includes("cmd")) {
+          // CMD: colored prompt using $E ANSI escape codes
+          // $E = ESC, user@host in cyan, path in blue, > in green
+          invoke("write_to_pty", { sessionId, data: "prompt $E[36m%USERNAME%$E[90m@$E[35m%COMPUTERNAME%$E[0m $E[34m$P$E[32m $g$E[0m \r" });
+          invoke("write_to_pty", { sessionId, data: "cls\r" });
+        } else if (shellLower.includes("bash")) {
+          // Bash: colored PS1 prompt
+          const bashPS1 = `export PS1='\\[\\e[36m\\]\\u\\[\\e[90m\\]@\\[\\e[35m\\]\\h\\[\\e[0m\\] \\[\\e[34m\\]\\w\\[\\e[32m\\] \\$\\[\\e[0m\\] ' && export CLICOLOR=1 && export LS_COLORS='di=1;34:fi=0:ln=1;36:pi=33:so=1;35:bd=1;33:cd=1;33:or=31:mi=31:ex=1;32' && clear\n`;
+          invoke("write_to_pty", { sessionId, data: bashPS1 });
+        } else if (shellLower.includes("zsh")) {
+          // Zsh: colored PROMPT
+          const zshPS1 = `export PROMPT='%F{cyan}%n%F{8}@%F{magenta}%m%f %F{blue}%~%F{green} %%%f ' && export CLICOLOR=1 && export LS_COLORS='di=1;34:fi=0:ln=1;36:pi=33:so=1;35:bd=1;33:cd=1;33:or=31:mi=31:ex=1;32' && clear\n`;
+          invoke("write_to_pty", { sessionId, data: zshPS1 });
+        } else if (shellLower.includes("fish")) {
+          // Fish: uses built-in coloring by default, just clear
+          invoke("write_to_pty", { sessionId, data: `clear\n` });
+        }
 
         const tabName = tab?.title || tabId;
         const unlistenData = await listen<string>(`pty-data-${sessionId}`, (event) => {
