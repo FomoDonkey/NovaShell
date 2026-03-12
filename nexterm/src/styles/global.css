@@ -445,13 +445,27 @@ body {
   height: 100%;
 }
 
+.terminal-instance .xterm-viewport {
+  overflow-y: scroll !important;
+}
+
 .terminal-instance .xterm-viewport::-webkit-scrollbar {
   width: 8px;
 }
 
-.terminal-instance .xterm-viewport::-webkit-scrollbar-thumb {
-  background: var(--text-muted);
+.terminal-instance .xterm-viewport::-webkit-scrollbar-track {
+  background: rgba(128, 128, 128, 0.1);
   border-radius: 4px;
+}
+
+.terminal-instance .xterm-viewport::-webkit-scrollbar-thumb {
+  background: rgba(128, 128, 128, 0.4);
+  border-radius: 4px;
+  min-height: 40px;
+}
+
+.terminal-instance .xterm-viewport::-webkit-scrollbar-thumb:hover {
+  background: rgba(128, 128, 128, 0.6);
 }
 
 .sidebar-resize-handle {
