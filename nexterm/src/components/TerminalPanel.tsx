@@ -320,13 +320,9 @@ export function TerminalPanel() {
         const { listen } = await getTauriEvent();
 
         const tab = useAppStore.getState().tabs.find((t) => t.id === tabId);
-        const shellMap: Record<string, string> = {
-          powershell: "powershell.exe",
-          cmd: "cmd.exe",
-          bash: "C:\\Program Files\\Git\\bin\\bash.exe",
-          wsl: "C:\\Windows\\System32\\wsl.exe",
-        };
-        const shellPath = shellMap[tab?.shellType || "powershell"] || "powershell.exe";
+        // shellType now stores the full path from get_available_shells
+        const defaultShell = navigator.platform.startsWith("Win") ? "powershell.exe" : "/bin/bash";
+        const shellPath = tab?.shellType || defaultShell;
 
         sessionId = await invoke<string>("create_pty_session", { shellPath });
         updateTab(tabId, { sessionId });
@@ -367,7 +363,7 @@ export function TerminalPanel() {
             const cmd = ptyInputBuffer.trim();
             // Only record meaningful commands (not empty, not single chars, not escape sequences)
             if (cmd && cmd.length > 1 && !cmd.startsWith("\x1b")) {
-              useAppStore.getState().addHistory({ command: cmd, shell: tab?.shellType || "powershell" });
+              useAppStore.getState().addHistory({ command: cmd, shell: tab?.shellType || "shell" });
               useAppStore.getState().incrementCommandCount();
             }
             ptyInputBuffer = "";

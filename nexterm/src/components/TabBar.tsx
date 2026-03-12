@@ -8,14 +8,15 @@ const shellIcons: Record<string, string> = {
   cmd: ">_",
   bash: "$",
   zsh: "%",
+  fish: "><>",
+  wsl: "~",
 };
 
-const shells = [
-  { id: "powershell", name: "PowerShell", icon: "PS" },
-  { id: "cmd", name: "CMD", icon: ">_" },
-  { id: "bash", name: "Git Bash", icon: "$" },
-  { id: "wsl", name: "WSL", icon: "~" },
-];
+interface ShellInfo {
+  name: string;
+  path: string;
+  available: boolean;
+}
 
 export function TabBar() {
   const tabs = useAppStore((s) => s.tabs);
@@ -25,9 +26,23 @@ export function TabBar() {
   const setActiveTab = useAppStore((s) => s.setActiveTab);
   const [showShellMenu, setShowShellMenu] = useState(false);
   const [menuPos, setMenuPos] = useState({ top: 0, left: 0 });
+  const [availableShells, setAvailableShells] = useState<ShellInfo[]>([]);
   const btnRef = useRef<HTMLButtonElement>(null);
 
   const dropdownRef = useRef<HTMLDivElement>(null);
+
+  // Fetch available shells from backend (platform-aware)
+  useEffect(() => {
+    import("@tauri-apps/api/core").then(({ invoke }) => {
+      invoke<ShellInfo[]>("get_available_shells").then(setAvailableShells).catch(() => {
+        // Fallback for demo mode
+        setAvailableShells([
+          { name: "PowerShell", path: "powershell.exe", available: true },
+          { name: "CMD", path: "cmd.exe", available: true },
+        ]);
+      });
+    }).catch(() => {});
+  }, []);
 
   // Close menu on outside click
   useEffect(() => {
@@ -59,7 +74,16 @@ export function TabBar() {
           onClick={() => setActiveTab(tab.id)}
         >
           <span className="tab-icon" style={{ fontSize: 10, fontWeight: 700 }}>
-            {shellIcons[tab.shellType] || ">_"}
+            {(() => {
+              const s = tab.shellType.toLowerCase();
+              if (s.includes("powershell")) return "PS";
+              if (s.includes("cmd")) return ">_";
+              if (s.includes("zsh")) return "%";
+              if (s.includes("fish")) return "><>";
+              if (s.includes("wsl")) return "~";
+              if (s.includes("bash")) return "$";
+              return ">_";
+            })()}
           </span>
           <span>{tab.title}</span>
           {tabs.length > 1 && (
@@ -94,19 +118,22 @@ export function TabBar() {
             zIndex: 10000,
           }}
         >
-          {shells.map((shell) => (
-            <button
-              key={shell.id}
-              className="shell-option"
-              onClick={() => {
-                addTab(shell.id);
-                setShowShellMenu(false);
-              }}
-            >
-              <span style={{ fontWeight: 700, width: 24 }}>{shell.icon}</span>
-              {shell.name}
-            </button>
-          ))}
+          {availableShells.map((shell) => {
+            const key = shell.name.toLowerCase().replace(/\s+/g, "").replace("gitbash", "bash");
+            return (
+              <button
+                key={shell.path}
+                className="shell-option"
+                onClick={() => {
+                  addTab(shell.path);
+                  setShowShellMenu(false);
+                }}
+              >
+                <span style={{ fontWeight: 700, width: 24 }}>{shellIcons[key] || ">_"}</span>
+                {shell.name}
+              </button>
+            );
+          })}
         </div>,
         document.body
       )}

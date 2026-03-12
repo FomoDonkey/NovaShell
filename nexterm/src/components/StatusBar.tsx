@@ -84,12 +84,17 @@ export function StatusBar() {
     return () => { clearInterval(branchInterval); clearInterval(statsInterval); };
   }, [setGitBranch, setSystemStats]);
 
-  const shellLabels: Record<string, string> = {
-    powershell: "PowerShell",
-    cmd: "CMD",
-    bash: "Bash",
-    wsl: "WSL",
-    zsh: "Zsh",
+  const getShellLabel = (shellType: string) => {
+    const lower = shellType.toLowerCase();
+    if (lower.includes("powershell")) return "PowerShell";
+    if (lower.includes("cmd")) return "CMD";
+    if (lower.includes("zsh")) return "Zsh";
+    if (lower.includes("fish")) return "Fish";
+    if (lower.includes("wsl")) return "WSL";
+    if (lower.includes("bash")) return "Bash";
+    // Extract filename from path as fallback
+    const name = shellType.split(/[/\\]/).pop()?.replace(/\.exe$/i, "") || "Shell";
+    return name.charAt(0).toUpperCase() + name.slice(1);
   };
 
   const cycleSplit = () => {
@@ -97,7 +102,7 @@ export function StatusBar() {
     const current = modes.indexOf(splitMode);
     const next = modes[(current + 1) % modes.length];
     if (next !== "none" && tabs.length < 2) {
-      addTab(activeTab?.shellType || "powershell");
+      addTab(activeTab?.shellType);
     }
     setSplitMode(next);
   };
@@ -113,7 +118,7 @@ export function StatusBar() {
         </div>
         <div className="statusbar-item">
           <Terminal size={12} />
-          <span>{shellLabels[activeTab?.shellType || "powershell"] || "Shell"}</span>
+          <span>{getShellLabel(activeTab?.shellType || "shell")}</span>
         </div>
         {gitBranch && (
           <div className="statusbar-item">

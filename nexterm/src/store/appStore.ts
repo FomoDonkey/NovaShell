@@ -159,10 +159,10 @@ export const useAppStore = create<AppState>((set, get) => ({
     return { theme, themesVisited: visited };
   }),
 
-  tabs: [{ id: "tab-0", title: "Terminal 1", shellType: "powershell", sessionId: null }],
+  tabs: [{ id: "tab-0", title: "Terminal 1", shellType: navigator.platform.startsWith("Win") ? "powershell.exe" : "/bin/bash", sessionId: null }],
   activeTabId: "tab-0",
 
-  addTab: (shell = "powershell") => {
+  addTab: (shell = navigator.platform.startsWith("Win") ? "powershell.exe" : "/bin/bash") => {
     tabCounter++;
     const id = `tab-${tabCounter}`;
     set((s) => ({
