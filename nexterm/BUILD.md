@@ -1,4 +1,4 @@
-# NovaTerm - Build & Packaging Guide
+# NovaShell - Build & Packaging Guide
 
 ## Prerequisites
 
@@ -33,54 +33,50 @@ sudo dnf install webkit2gtk4.1-devel openssl-devel curl wget \
 ## Quick Build
 
 ```bash
-# 1. Install dependencies
 cd nexterm
 npm install
-
-# 2. Build for current platform
 npm run tauri:build
 ```
 
-The installer will be at: `src-tauri/target/release/bundle/`
+Installers output to: `src-tauri/target/release/bundle/`
 
 ---
 
 ## Platform-Specific Builds
 
-### Windows (.exe installer + .msi)
+### Windows (.exe + .msi)
 
 ```bash
 npm run tauri:build:windows
 ```
 
 **Output:**
-- `src-tauri/target/release/bundle/nsis/NovaTerm_1.0.0_x64-setup.exe`
-- `src-tauri/target/release/bundle/msi/NovaTerm_1.0.0_x64_en-US.msi`
+- `src-tauri/target/release/bundle/nsis/NovaShell_1.2.0_x64-setup.exe`
+- `src-tauri/target/release/bundle/msi/NovaShell_1.2.0_x64_en-US.msi`
 
 The NSIS installer includes:
 - Installation folder selection
-- Desktop shortcut creation
-- Start menu entry
-- "Open NovaTerm here" context menu entry
+- Desktop shortcut + Start menu entry
+- "Open NovaShell here" context menu entry
 - Language selector (English/Spanish)
 - Uninstaller with full cleanup
 
 ### macOS (.dmg + .app)
 
 ```bash
+# Apple Silicon (M1/M2/M3/M4)
+npm run tauri:build:mac-arm
+
 # Intel Mac
 npm run tauri:build:mac
 
-# Apple Silicon (M1/M2/M3)
-npm run tauri:build:mac-arm
-
 # Universal binary (both architectures)
-npm run tauri build -- --target universal-apple-darwin
+npx tauri build --target universal-apple-darwin
 ```
 
 **Output:**
-- `src-tauri/target/release/bundle/dmg/NovaTerm_1.0.0_x64.dmg`
-- `src-tauri/target/release/bundle/macos/NovaTerm.app`
+- `src-tauri/target/release/bundle/dmg/NovaShell_1.2.0_aarch64.dmg`
+- `src-tauri/target/release/bundle/macos/NovaShell.app`
 
 ### Linux (.deb + .rpm + .AppImage)
 
@@ -89,26 +85,20 @@ npm run tauri:build:linux
 ```
 
 **Output:**
-- `src-tauri/target/release/bundle/deb/novaterm_1.0.0_amd64.deb`
-- `src-tauri/target/release/bundle/rpm/novaterm-1.0.0-1.x86_64.rpm`
-- `src-tauri/target/release/bundle/appimage/novaterm_1.0.0_amd64.AppImage`
+- `src-tauri/target/release/bundle/deb/NovaShell_1.2.0_amd64.deb`
+- `src-tauri/target/release/bundle/rpm/NovaShell-1.2.0-1.x86_64.rpm`
+- `src-tauri/target/release/bundle/appimage/NovaShell_1.2.0_amd64.AppImage`
 
 ---
 
 ## Custom Icons
 
-To use your own icon:
-
 ```bash
-# Place a 1024x1024 PNG with transparency at src-tauri/icons/
+# Generate all icon sizes from a 1024x1024 PNG
 npx @tauri-apps/cli icon path/to/your-icon.png
-```
 
-Or use the built-in generator:
-
-```bash
-npm run icons:generate              # Generate default NovaTerm icon
-npm run icons:generate my-icon.png  # Use custom source (needs: npm i -D sharp)
+# Or use the built-in generator
+npm run icons:generate
 ```
 
 ---
@@ -123,77 +113,87 @@ Produces a debug build with dev tools enabled and source maps.
 
 ---
 
-## Auto-Update Setup (Optional)
+## Auto-Update (CI/CD)
 
-1. Generate signing keys:
-   ```bash
-   npx @tauri-apps/cli signer generate -w ~/.tauri/novaterm.key
-   ```
+NovaShell uses GitHub Actions for automated builds and Tauri's updater for auto-updates.
 
-2. Set environment variables:
-   ```bash
-   export TAURI_SIGNING_PRIVATE_KEY=$(cat ~/.tauri/novaterm.key)
-   export TAURI_SIGNING_PRIVATE_KEY_PASSWORD="your-password"
-   ```
+### How it works
 
-3. Update `src-tauri/tauri.conf.json`:
-   ```json
-   "plugins": {
-     "updater": {
-       "active": true,
-       "dialog": true,
-       "pubkey": "YOUR_PUBLIC_KEY_HERE",
-       "endpoints": [
-         "https://your-server.com/updates/{{target}}/{{arch}}/{{current_version}}"
-       ]
-     }
-   }
-   ```
+1. Push a version tag (e.g., `v1.2.0`) to trigger the CI workflow
+2. GitHub Actions builds for all 4 targets: Windows x64, macOS ARM, macOS Intel, Linux x64
+3. A `latest.json` is generated with download URLs and minisign signatures
+4. The release is created as a draft, then published
+5. Running instances of NovaShell check for updates automatically
 
-4. Build with signing:
-   ```bash
-   npm run tauri:build
-   ```
+### Signing Keys
+
+The updater requires minisign signing keys:
+
+```bash
+# Generate keys (one-time setup)
+npx @tauri-apps/cli signer generate -w ~/.tauri/novashell.key
+```
+
+Store these as GitHub Secrets:
+- `TAURI_SIGNING_PRIVATE_KEY` - The private key contents
+- `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` - The key password
+
+The public key is configured in `tauri.conf.json` under `plugins.updater.pubkey`.
+
+### Creating a Release
+
+```bash
+# 1. Update version in package.json and tauri.conf.json and Cargo.toml
+# 2. Commit and tag
+git add -A && git commit -m "Bump version to x.y.z"
+git tag vx.y.z
+git push origin main vx.y.z
+
+# 3. CI builds automatically — publish the draft release when ready
+gh release edit vx.y.z --draft=false
+```
 
 ---
 
 ## Build Optimization
 
-The release build is already optimized with:
+The release profile is configured for minimal binary size:
 
-- **LTO** (Link-Time Optimization): Smaller, faster binary
-- **codegen-units = 1**: Better optimization at cost of compile time
-- **opt-level = "s"**: Optimize for size
-- **strip = true**: Remove debug symbols
-- **panic = "abort"**: Smaller binary (no unwind tables)
-- **esbuild minification**: Frontend assets minified
-- **Local fonts**: JetBrains Mono bundled (no internet needed)
+| Setting            | Value   | Effect                                    |
+|--------------------|---------|-------------------------------------------|
+| `lto`              | `true`  | Link-Time Optimization for smaller binary |
+| `codegen-units`    | `1`     | Better optimization (slower compile)      |
+| `opt-level`        | `"s"`   | Optimize for size                         |
+| `strip`            | `true`  | Remove debug symbols                      |
+| `panic`            | `abort` | No unwind tables                          |
 
-Typical installer sizes:
-- Windows NSIS: ~8-12 MB
-- macOS DMG: ~10-15 MB
-- Linux AppImage: ~15-20 MB
-- Linux .deb: ~8-12 MB
+Frontend assets are minified by Vite/esbuild. JetBrains Mono font is bundled locally.
 
 ---
 
 ## Troubleshooting
 
 ### Windows: "WebView2 not found"
-The installer includes a WebView2 bootstrapper. If offline, download WebView2
-from Microsoft and install before running NovaTerm.
+The installer includes a WebView2 bootstrapper that downloads it automatically. If offline, install WebView2 from Microsoft first.
 
 ### macOS: "App is damaged"
-Run: `xattr -cr /Applications/NovaTerm.app`
+```bash
+xattr -cr /Applications/NovaShell.app
+```
 
 ### Linux: AppImage won't start
 ```bash
-chmod +x NovaTerm_1.0.0_amd64.AppImage
-./NovaTerm_1.0.0_amd64.AppImage
+chmod +x NovaShell_*_amd64.AppImage
+./NovaShell_*_amd64.AppImage
 ```
 
 ### Build fails with Cargo errors
 ```bash
-cd src-tauri && cargo clean && cd ..
-npm run tauri:build
+cd nexterm/src-tauri && cargo clean && cd ../..
+cd nexterm && npm run tauri:build
 ```
+
+### SSH: "Failed to connect"
+- Verify the host is reachable: `ssh user@host -p port`
+- For private key auth, ensure the key file is accessible and in PEM format
+- System keychain access may require unlocking on Linux (Secret Service)

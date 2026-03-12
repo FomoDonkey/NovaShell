@@ -1,4 +1,4 @@
-# NovaTerm - Tasks
+# NovaShell - Tasks
 
 ## Completed
 - [x] Create package.json with dependencies
@@ -47,10 +47,17 @@
 
 - [x] Auto-update system: signing keys, UpdateNotification component, CI/CD with latest.json
 
+- [x] Rename NovaTerm → NovaShell across entire codebase (~20 files)
+- [x] Make extensions panel fully functional (Git, Docker, Node.js, Python, System Info)
+- [x] Fix git branch "--" display in StatusBar
+- [x] Cross-platform shell detection (dynamic from backend, Homebrew paths)
+- [x] Fix contextmenu event listener memory leaks (TerminalPanel + SSHPanel)
+- [x] Cap debug parse queue at 500 entries
+- [x] Security whitelist for run_command_output
+- [x] Fix cmd.exe argument handling (direct exec first, cmd /c fallback for .cmd scripts)
+- [x] CI/CD pipeline for automated cross-platform builds (GitHub Actions)
+
 ## Pending
 - [ ] Code signing for Windows (requires certificate)
 - [ ] Code signing for macOS (requires Apple Developer account)
-- [ ] Set up auto-update server endpoints
-- [ ] Build on macOS (requires macOS machine)
-- [ ] Build on Linux (requires Linux machine)
-- [ ] CI/CD pipeline for automated cross-platform builds (GitHub Actions)
+- [ ] Publish v1.2.0 release

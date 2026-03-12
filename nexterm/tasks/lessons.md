@@ -1,4 +1,4 @@
-# NovaTerm - Lessons Learned
+# NovaShell - Lessons Learned
 
 ## Session 1 (2026-03-11)
 - Project uses Vite + React + TypeScript + Tauri stack
@@ -30,3 +30,11 @@
 - The updater `latest.json` must have `version`, `pub_date`, `platforms` with per-platform `url` + `signature` fields
 - Private signing keys must NEVER be committed — store as GitHub Secrets and reference via env vars in CI
 - Tauri v2 updater config uses `plugins.updater.pubkey` and `plugins.updater.endpoints` (not `active`/`dialog` like v1)
+
+## Session 4 - Cross-platform fixes & cmd.exe bug (2026-03-12)
+- On Windows, `cmd /c command args...` breaks complex arguments (e.g., `node -e "try{...}catch{...}"` produces no output). Solution: try direct `Command::new()` first, only fall back to `cmd /c` when `ErrorKind::NotFound` (for .cmd/.bat scripts like npm, npx)
+- `navigator.platform` is the simplest way to detect OS in frontend for default shell selection
+- Shell detection must be dynamic from backend — hardcoded shell lists break on non-Windows OS
+- macOS Homebrew installs shells to `/opt/homebrew/bin/` (ARM) or `/usr/local/bin/` (Intel) — must check both
+- Always store event listener references for cleanup — anonymous functions in `addEventListener` leak memory
+- When renaming a project, keep Cargo.toml `name` unchanged if Cargo.lock references it (avoids rebuild issues)
