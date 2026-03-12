@@ -423,28 +423,32 @@ export function TerminalPanel() {
           rows: terminal.rows,
         });
 
-        // Inject colored prompt after shell is ready (delay ensures shell has started)
+        // Inject colored prompt — send commands sequentially with delays
         const colorSid = sessionId;
-        setTimeout(() => {
-          const shellLower = shellPath.toLowerCase();
-          if (shellLower.includes("powershell")) {
-            const psPrompt = [
-              'function prompt { $p = $executionContext.SessionState.Path.CurrentLocation; Write-Host "" -NoNewline; Write-Host "$env:USERNAME" -ForegroundColor Cyan -NoNewline; Write-Host "@" -ForegroundColor DarkGray -NoNewline; Write-Host "$env:COMPUTERNAME" -ForegroundColor Magenta -NoNewline; Write-Host " " -NoNewline; Write-Host "$p" -ForegroundColor Blue -NoNewline; Write-Host " >" -ForegroundColor Green -NoNewline; return " " }',
-              '$Host.UI.RawUI.WindowTitle = "NovaShell"',
-              "Clear-Host",
-            ].join("; ");
-            invoke("write_to_pty", { sessionId: colorSid, data: psPrompt + "\r" });
-          } else if (shellLower.includes("cmd")) {
-            invoke("write_to_pty", { sessionId: colorSid, data: "prompt $E[36m%USERNAME%$E[90m@$E[35m%COMPUTERNAME%$E[0m $E[34m$P$E[32m $g$E[0m \r" });
-            setTimeout(() => invoke("write_to_pty", { sessionId: colorSid, data: "cls\r" }), 300);
-          } else if (shellLower.includes("bash")) {
-            const bashPS1 = "export PS1='\\[\\e[36m\\]\\u\\[\\e[90m\\]@\\[\\e[35m\\]\\h\\[\\e[0m\\] \\[\\e[34m\\]\\w\\[\\e[32m\\] \\$\\[\\e[0m\\] ' && export CLICOLOR=1 && export LS_COLORS='di=1;34:fi=0:ln=1;36:pi=33:so=1;35:bd=1;33:cd=1;33:or=31:mi=31:ex=1;32' && clear\n";
-            invoke("write_to_pty", { sessionId: colorSid, data: bashPS1 });
-          } else if (shellLower.includes("zsh")) {
-            const zshPS1 = "export PROMPT='%F{cyan}%n%F{8}@%F{magenta}%m%f %F{blue}%~%F{green} %%%f ' && export CLICOLOR=1 && export LS_COLORS='di=1;34:fi=0:ln=1;36:pi=33:so=1;35:bd=1;33:cd=1;33:or=31:mi=31:ex=1;32' && clear\n";
-            invoke("write_to_pty", { sessionId: colorSid, data: zshPS1 });
-          }
-        }, 800);
+        const sendPty = (data: string, delay: number) => {
+          setTimeout(() => invoke("write_to_pty", { sessionId: colorSid, data: data + "\r" }), delay);
+        };
+
+        const shellLower = shellPath.toLowerCase();
+        if (shellLower.includes("powershell") || shellLower.includes("pwsh")) {
+          // 1) Colored prompt using $([char]27) — guaranteed PS 5.1+ compat
+          sendPty('function prompt { "$([char]27)[36m$env:USERNAME$([char]27)[90m@$([char]27)[35m$env:COMPUTERNAME$([char]27)[0m $([char]27)[34m$($executionContext.SessionState.Path.CurrentLocation)$([char]27)[32m >$([char]27)[0m " }', 1200);
+          // 2) PSReadLine syntax highlighting (colors while typing commands)
+          sendPty('try { Set-PSReadLineOption -Colors @{ Command = "Green"; Parameter = "DarkCyan"; String = "DarkYellow"; Operator = "DarkGray"; Variable = "Cyan"; Number = "Yellow"; Type = "Blue"; Comment = "DarkGreen"; Keyword = "Magenta" } } catch {}', 1700);
+          // 3) Clear to show clean prompt
+          sendPty('Clear-Host', 2200);
+        } else if (shellLower.includes("cmd")) {
+          sendPty("prompt $E[36m%USERNAME%$E[90m@$E[35m%COMPUTERNAME%$E[0m $E[34m$P$E[32m $g$E[0m ", 1200);
+          sendPty("cls", 1600);
+        } else if (shellLower.includes("bash")) {
+          sendPty("export PS1='\\[\\e[36m\\]\\u\\[\\e[90m\\]@\\[\\e[35m\\]\\h\\[\\e[0m\\] \\[\\e[34m\\]\\w\\[\\e[32m\\] \\$\\[\\e[0m\\] '", 800);
+          sendPty("export CLICOLOR=1 && export LS_COLORS='di=1;34:fi=0:ln=1;36:pi=33:so=1;35:bd=1;33:cd=1;33:or=31:mi=31:ex=1;32'", 1000);
+          sendPty("clear", 1200);
+        } else if (shellLower.includes("zsh")) {
+          sendPty("export PROMPT='%F{cyan}%n%F{8}@%F{magenta}%m%f %F{blue}%~%F{green} %%%f '", 800);
+          sendPty("export CLICOLOR=1 && export LS_COLORS='di=1;34:fi=0:ln=1;36:pi=33:so=1;35:bd=1;33:cd=1;33:or=31:mi=31:ex=1;32'", 1000);
+          sendPty("clear", 1200);
+        }
       } catch {
         terminal.writeln("\x1b[1;36m  _   _                  ____  _          _ _  \x1b[0m");
         terminal.writeln("\x1b[1;36m | \\ | | _____   ____ _/ ___|| |__   ___| | | \x1b[0m");

@@ -579,7 +579,7 @@ body {
   cursor: grab;
   transition: var(--transition-fast);
   margin-bottom: 6px;
-  -webkit-user-drag: element;
+  -webkit-user-drag: none;
   user-select: none;
 }
 

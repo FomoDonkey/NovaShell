@@ -708,11 +708,32 @@ function PluginsPanel() {
   const plugins = useAppStore((s) => s.plugins);
   const togglePlugin = useAppStore((s) => s.togglePlugin);
   const [pluginData, setPluginData] = useState<Record<string, { loading: boolean; data: string | null; error: string | null }>>({});
+  const [gitProjectPath, setGitProjectPath] = useState<string>("");
+  const [gitPathInput, setGitPathInput] = useState("");
+  const [showGitPathInput, setShowGitPathInput] = useState(false);
 
   const runCommand = useCallback(async (command: string, args: string[], cwd?: string): Promise<string> => {
     const { invoke } = await import("@tauri-apps/api/core");
     return invoke<string>("run_command_output", { command, args, cwd: cwd || null });
   }, []);
+
+  // Auto-detect git project path on mount
+  useEffect(() => {
+    if (!gitProjectPath) {
+      (async () => {
+        try {
+          // Try to find a git repo by running git rev-parse from home dir
+          const root = await runCommand("git", ["rev-parse", "--show-toplevel"]);
+          if (root.trim()) {
+            setGitProjectPath(root.trim());
+            setGitPathInput(root.trim());
+          }
+        } catch {
+          // Home dir isn't a git repo — that's ok, user will set path
+        }
+      })();
+    }
+  }, [gitProjectPath, runCommand]);
 
   const fetchPluginData = useCallback(async (pluginId: string) => {
     setPluginData((prev) => ({ ...prev, [pluginId]: { loading: true, data: null, error: null } }));
@@ -720,18 +741,25 @@ function PluginsPanel() {
       let result = "";
       switch (pluginId) {
         case "git": {
+          const cwd = gitProjectPath || undefined;
           const [branch, status, log] = await Promise.allSettled([
-            runCommand("git", ["branch", "--show-current"]),
-            runCommand("git", ["status", "--short"]),
-            runCommand("git", ["log", "--oneline", "-5"]),
+            runCommand("git", ["branch", "--show-current"], cwd),
+            runCommand("git", ["status", "--short"], cwd),
+            runCommand("git", ["log", "--oneline", "-5"], cwd),
           ]);
           const branchStr = branch.status === "fulfilled" ? branch.value.trim() : "N/A";
           const statusStr = status.status === "fulfilled" ? status.value.trim() : "";
           const logStr = log.status === "fulfilled" ? log.value.trim() : "";
           const changedFiles = statusStr ? statusStr.split("\n").length : 0;
-          result = `Branch: ${branchStr}\nChanged files: ${changedFiles}`;
-          if (statusStr) result += `\n\n--- Status ---\n${statusStr}`;
-          if (logStr) result += `\n\n--- Recent commits ---\n${logStr}`;
+
+          if (branchStr === "N/A" && !statusStr && !logStr) {
+            result = "No git repository found.\nSet a project path below to use Git integration.";
+          } else {
+            result = `Branch: ${branchStr}\nChanged files: ${changedFiles}`;
+            if (cwd) result += `\nPath: ${cwd}`;
+            if (statusStr) result += `\n\n--- Status ---\n${statusStr}`;
+            if (logStr) result += `\n\n--- Recent commits ---\n${logStr}`;
+          }
           break;
         }
         case "docker": {
@@ -803,7 +831,7 @@ function PluginsPanel() {
     } catch (e) {
       setPluginData((prev) => ({ ...prev, [pluginId]: { loading: false, data: null, error: String(e) } }));
     }
-  }, [runCommand]);
+  }, [runCommand, gitProjectPath]);
 
   // Fetch data for enabled plugins on mount and when toggled
   useEffect(() => {
@@ -813,6 +841,16 @@ function PluginsPanel() {
       }
     });
   }, [plugins, fetchPluginData]);
+
+  // Re-fetch git when project path changes
+  useEffect(() => {
+    if (gitProjectPath) {
+      const gitPlugin = plugins.find((p) => p.id === "git" && p.enabled);
+      if (gitPlugin) {
+        fetchPluginData("git");
+      }
+    }
+  }, [gitProjectPath, plugins, fetchPluginData]);
 
   const handleToggle = (id: string) => {
     const plugin = plugins.find((p) => p.id === id);
@@ -874,20 +912,72 @@ function PluginsPanel() {
                     fontFamily: "inherit",
                   }}>{data.data}</pre>
                 )}
-                <button
-                  onClick={() => fetchPluginData(plugin.id)}
-                  style={{
-                    marginTop: 4,
-                    padding: "3px 8px",
-                    background: "var(--bg-tertiary)",
-                    border: "1px solid var(--border-subtle)",
-                    borderRadius: "var(--radius-sm)",
-                    color: "var(--text-muted)",
-                    fontSize: 10,
-                    cursor: "pointer",
-                    fontFamily: "inherit",
-                  }}
-                >Refresh</button>
+                <div style={{ display: "flex", gap: 4, marginTop: 4 }}>
+                  <button
+                    onClick={() => fetchPluginData(plugin.id)}
+                    style={{
+                      padding: "3px 8px",
+                      background: "var(--bg-tertiary)",
+                      border: "1px solid var(--border-subtle)",
+                      borderRadius: "var(--radius-sm)",
+                      color: "var(--text-muted)",
+                      fontSize: 10,
+                      cursor: "pointer",
+                      fontFamily: "inherit",
+                    }}
+                  >Refresh</button>
+                  {plugin.id === "git" && (
+                    <button
+                      onClick={() => { setShowGitPathInput(!showGitPathInput); setGitPathInput(gitProjectPath); }}
+                      style={{
+                        padding: "3px 8px",
+                        background: "var(--bg-tertiary)",
+                        border: "1px solid var(--border-subtle)",
+                        borderRadius: "var(--radius-sm)",
+                        color: "var(--text-muted)",
+                        fontSize: 10,
+                        cursor: "pointer",
+                        fontFamily: "inherit",
+                      }}
+                    >{gitProjectPath ? "Change Path" : "Set Path"}</button>
+                  )}
+                </div>
+                {plugin.id === "git" && showGitPathInput && (
+                  <div style={{ display: "flex", gap: 4, marginTop: 6 }}>
+                    <input
+                      value={gitPathInput}
+                      onChange={(e) => setGitPathInput(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter" && gitPathInput.trim()) {
+                          setGitProjectPath(gitPathInput.trim());
+                          setShowGitPathInput(false);
+                        }
+                        if (e.key === "Escape") setShowGitPathInput(false);
+                      }}
+                      placeholder="C:\Users\you\project"
+                      autoFocus
+                      style={{
+                        flex: 1, padding: "4px 6px",
+                        background: "var(--bg-primary)", border: "1px solid var(--border-subtle)",
+                        borderRadius: "var(--radius-sm)", color: "var(--text-primary)",
+                        fontSize: 10, fontFamily: "inherit", outline: "none",
+                      }}
+                    />
+                    <button
+                      onClick={() => {
+                        if (gitPathInput.trim()) {
+                          setGitProjectPath(gitPathInput.trim());
+                          setShowGitPathInput(false);
+                        }
+                      }}
+                      style={{
+                        padding: "3px 8px", background: "var(--accent-primary)",
+                        border: "none", borderRadius: "var(--radius-sm)",
+                        color: "white", fontSize: 10, cursor: "pointer", fontFamily: "inherit",
+                      }}
+                    >Set</button>
+                  </div>
+                )}
               </div>
             )}
           </div>
