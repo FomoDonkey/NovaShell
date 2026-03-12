@@ -576,9 +576,16 @@ body {
   background: var(--bg-tertiary);
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius-md);
-  cursor: pointer;
+  cursor: grab;
   transition: var(--transition-fast);
   margin-bottom: 6px;
+  -webkit-user-drag: element;
+  user-select: none;
+}
+
+.snippet-card:active {
+  cursor: grabbing;
+  opacity: 0.7;
 }
 
 .snippet-card:hover {

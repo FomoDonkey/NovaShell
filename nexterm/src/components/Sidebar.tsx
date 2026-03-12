@@ -161,6 +161,9 @@ function SnippetsPanel() {
   const [editFolderName, setEditFolderName] = useState("");
   const [dragSnippetId, setDragSnippetId] = useState<string | null>(null);
   const [dragOverFolder, setDragOverFolder] = useState<string | null>(null);
+  const [isDragging, setIsDragging] = useState(false);
+  const dragStartPos = useRef<{ x: number; y: number } | null>(null);
+  const pendingDragId = useRef<string | null>(null);
 
   const handleAdd = () => {
     if (newName && newCmd) {
@@ -203,24 +206,56 @@ function SnippetsPanel() {
     });
   };
 
-  const handleDragStart = (e: React.DragEvent, snippetId: string) => {
-    e.dataTransfer.setData("text/plain", snippetId);
-    e.dataTransfer.effectAllowed = "move";
-    setDragSnippetId(snippetId);
+  // Mouse-based drag (more reliable than HTML5 DnD in WebView2/Tauri)
+  const handleMouseDown = (e: React.MouseEvent, snippetId: string) => {
+    // Only left click, ignore if clicking buttons
+    if (e.button !== 0) return;
+    const target = e.target as HTMLElement;
+    if (target.closest("button")) return;
+    dragStartPos.current = { x: e.clientX, y: e.clientY };
+    pendingDragId.current = snippetId;
   };
 
-  const handleDragOver = (e: React.DragEvent, folderId: string | null) => {
-    e.preventDefault();
-    e.dataTransfer.dropEffect = "move";
-    setDragOverFolder(folderId);
-  };
+  useEffect(() => {
+    const handleMouseMove = (e: MouseEvent) => {
+      if (!dragStartPos.current || !pendingDragId.current) return;
+      const dx = Math.abs(e.clientX - dragStartPos.current.x);
+      const dy = Math.abs(e.clientY - dragStartPos.current.y);
+      // Start drag after 5px movement threshold
+      if (dx > 5 || dy > 5) {
+        setDragSnippetId(pendingDragId.current);
+        setIsDragging(true);
+        dragStartPos.current = null;
+      }
+    };
 
-  const handleDrop = (e: React.DragEvent, folderId: string | undefined) => {
-    e.preventDefault();
-    const snippetId = dragSnippetId || e.dataTransfer.getData("text/plain");
-    if (snippetId) {
-      moveSnippetToFolder(snippetId, folderId);
+    const handleMouseUp = () => {
+      if (isDragging && dragSnippetId && dragOverFolder !== null) {
+        moveSnippetToFolder(dragSnippetId, dragOverFolder === "root" ? undefined : dragOverFolder);
+      }
       setDragSnippetId(null);
+      setDragOverFolder(null);
+      setIsDragging(false);
+      dragStartPos.current = null;
+      pendingDragId.current = null;
+    };
+
+    window.addEventListener("mousemove", handleMouseMove);
+    window.addEventListener("mouseup", handleMouseUp);
+    return () => {
+      window.removeEventListener("mousemove", handleMouseMove);
+      window.removeEventListener("mouseup", handleMouseUp);
+    };
+  }, [isDragging, dragSnippetId, dragOverFolder, moveSnippetToFolder]);
+
+  const handleFolderMouseEnter = (folderId: string | null) => {
+    if (isDragging) {
+      setDragOverFolder(folderId);
+    }
+  };
+
+  const handleFolderMouseLeave = () => {
+    if (isDragging) {
       setDragOverFolder(null);
     }
   };
@@ -271,10 +306,15 @@ function SnippetsPanel() {
       <div
         key={snippet.id}
         className="snippet-card"
-        style={{ flexDirection: "column", alignItems: "stretch", gap: 0, cursor: "grab" }}
-        draggable
-        onDragStart={(e) => handleDragStart(e, snippet.id)}
-        onDragEnd={() => { setDragSnippetId(null); setDragOverFolder(null); }}
+        style={{
+          flexDirection: "column",
+          alignItems: "stretch",
+          gap: 0,
+          cursor: isDragging && dragSnippetId === snippet.id ? "grabbing" : "grab",
+          opacity: isDragging && dragSnippetId === snippet.id ? 0.5 : 1,
+          transition: "opacity 0.15s ease",
+        }}
+        onMouseDown={(e) => handleMouseDown(e, snippet.id)}
       >
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
           <GripVertical size={12} style={{ color: "var(--text-muted)", opacity: 0.4, flexShrink: 0 }} />
@@ -361,6 +401,23 @@ function SnippetsPanel() {
         </div>
       </div>
 
+      {/* Drag indicator */}
+      {isDragging && dragSnippetId && (
+        <div style={{
+          padding: "6px 10px",
+          marginBottom: 8,
+          background: "rgba(88,166,255,0.1)",
+          border: "1px dashed var(--accent-primary)",
+          borderRadius: "var(--radius-sm)",
+          fontSize: 11,
+          color: "var(--accent-primary)",
+          textAlign: "center",
+          fontWeight: 500,
+        }}>
+          Drop on a folder to move "{snippets.find((s) => s.id === dragSnippetId)?.name}"
+        </div>
+      )}
+
       {/* Add folder form */}
       {addingFolder && (
         <div style={{ display: "flex", gap: 4, marginBottom: 10 }}>
@@ -391,9 +448,8 @@ function SnippetsPanel() {
           <div
             key={folder.id}
             style={{ marginBottom: 6 }}
-            onDragOver={(e) => handleDragOver(e, folder.id)}
-            onDragLeave={() => setDragOverFolder(null)}
-            onDrop={(e) => handleDrop(e, folder.id)}
+            onMouseEnter={() => handleFolderMouseEnter(folder.id)}
+            onMouseLeave={handleFolderMouseLeave}
           >
             {/* Folder header */}
             <div
@@ -469,9 +525,8 @@ function SnippetsPanel() {
 
       {/* Root snippets (no folder) */}
       <div
-        onDragOver={(e) => handleDragOver(e, "root")}
-        onDragLeave={() => setDragOverFolder(null)}
-        onDrop={(e) => handleDrop(e, undefined)}
+        onMouseEnter={() => handleFolderMouseEnter("root")}
+        onMouseLeave={handleFolderMouseLeave}
         style={{
           borderRadius: "var(--radius-sm)",
           border: dragOverFolder === "root" ? "1px dashed var(--accent-primary)" : "1px solid transparent",
