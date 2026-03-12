@@ -29,6 +29,7 @@ let debugParseScheduled = false;
 
 function queueDebugParse(data: string, source: string) {
   if (!useAppStore.getState().debugEnabled) return;
+  if (debugParseQueue.length >= 500) debugParseQueue.splice(0, debugParseQueue.length - 100);
   debugParseQueue.push({ data, source });
   if (!debugParseScheduled) {
     debugParseScheduled = true;
@@ -299,7 +300,7 @@ export function TerminalPanel() {
       });
 
       // Right-click context menu: copy if selection, paste if no selection
-      container.addEventListener("contextmenu", (e) => {
+      const contextMenuHandler = (e: Event) => {
         e.preventDefault();
         if (terminal.hasSelection()) {
           navigator.clipboard.writeText(terminal.getSelection());
@@ -313,7 +314,9 @@ export function TerminalPanel() {
             }
           });
         }
-      });
+      };
+      container.addEventListener("contextmenu", contextMenuHandler);
+      unlisteners.push(() => container.removeEventListener("contextmenu", contextMenuHandler));
 
       try {
         const { invoke } = await getTauriCore();
@@ -525,6 +528,7 @@ export function TerminalPanel() {
 
   useEffect(() => {
     return () => {
+      if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current);
       terminalsRef.current.forEach((ref) => {
         ref.disposables.forEach((d) => d.dispose());
         ref.unlisteners.forEach((fn) => fn());

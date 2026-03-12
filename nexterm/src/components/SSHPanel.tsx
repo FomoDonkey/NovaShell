@@ -309,7 +309,7 @@ export function SSHPanel() {
       return true;
     });
 
-    termContainerRef.current.addEventListener("contextmenu", (e: MouseEvent) => {
+    const sshContextMenu = (e: Event) => {
       e.preventDefault();
       if (terminal.hasSelection()) {
         navigator.clipboard.writeText(terminal.getSelection());
@@ -319,9 +319,12 @@ export function SSHPanel() {
           if (text) getTauriCore().then(({ invoke }) => invoke("ssh_write", { sessionId: currentSessionId, data: text }));
         });
       }
-    });
+    };
+    termContainerRef.current.addEventListener("contextmenu", sshContextMenu);
 
     const unlisteners: Array<() => void> = [];
+    const containerEl = termContainerRef.current;
+    unlisteners.push(() => containerEl.removeEventListener("contextmenu", sshContextMenu));
 
     (async () => {
       try {

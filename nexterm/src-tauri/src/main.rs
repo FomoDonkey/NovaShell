@@ -65,8 +65,14 @@ fn get_available_shells() -> Vec<ShellInfo> {
 
     #[cfg(not(target_os = "windows"))]
     {
-        for (name, path) in [("Bash", "/bin/bash"), ("Zsh", "/bin/zsh"), ("Fish", "/usr/bin/fish")] {
-            if std::path::Path::new(path).exists() {
+        // Check standard + Homebrew + common install paths
+        let candidates: &[(&str, &[&str])] = &[
+            ("Bash", &["/bin/bash", "/usr/bin/bash", "/usr/local/bin/bash", "/opt/homebrew/bin/bash"]),
+            ("Zsh", &["/bin/zsh", "/usr/bin/zsh", "/usr/local/bin/zsh", "/opt/homebrew/bin/zsh"]),
+            ("Fish", &["/usr/bin/fish", "/usr/local/bin/fish", "/opt/homebrew/bin/fish"]),
+        ];
+        for (name, paths) in candidates {
+            if let Some(path) = paths.iter().find(|p| std::path::Path::new(p).exists()) {
                 shells.push(ShellInfo {
                     name: name.to_string(),
                     path: path.to_string(),
