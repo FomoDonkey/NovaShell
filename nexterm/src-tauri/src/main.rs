@@ -493,6 +493,96 @@ fn keychain_delete_password(connection_id: String) -> Result<(), String> {
     keychain_manager::delete_password(&connection_id)
 }
 
+#[tauri::command]
+fn write_shell_init_script(shell_type: String) -> Result<String, String> {
+    let tmp = std::env::temp_dir();
+    let (filename, content) = match shell_type.as_str() {
+        "powershell" => ("novashell_init.ps1", r#"
+$e = [char]27
+
+# Colored prompt: user@host path >
+function prompt {
+    "${e}[36m$env:USERNAME${e}[90m@${e}[35m$env:COMPUTERNAME${e}[0m ${e}[34m$($executionContext.SessionState.Path.CurrentLocation)${e}[32m >${e}[0m "
+}
+
+# Colored directory listing
+function global:Show-ColorDir {
+    param([string]$Path = '.')
+    $items = Get-ChildItem -Path $Path -Force:$false -ErrorAction SilentlyContinue
+    foreach ($item in $items) {
+        $n = $item.Name
+        $sz = if ($item.PSIsContainer) { '<DIR>   ' } else { '{0,8}' -f $item.Length }
+        $dt = $item.LastWriteTime.ToString('MM/dd HH:mm')
+        $colored = if ($item.PSIsContainer) {
+            "${e}[1;34m${n}/${e}[0m"
+        } elseif ($item.Extension -match '\.(exe|cmd|bat|ps1|msi|com)$') {
+            "${e}[1;32m${n}${e}[0m"
+        } elseif ($item.Extension -match '\.(zip|tar|gz|7z|rar|bz2|xz)$') {
+            "${e}[1;31m${n}${e}[0m"
+        } elseif ($item.Extension -match '\.(jpg|jpeg|png|gif|bmp|svg|ico|webp)$') {
+            "${e}[1;35m${n}${e}[0m"
+        } elseif ($item.Extension -match '\.(mp3|mp4|avi|mkv|wav|flac|mov)$') {
+            "${e}[1;36m${n}${e}[0m"
+        } elseif ($item.Extension -match '\.(doc|docx|pdf|xls|xlsx|ppt|pptx|txt|md)$') {
+            "${e}[33m${n}${e}[0m"
+        } elseif ($n.StartsWith('.')) {
+            "${e}[90m${n}${e}[0m"
+        } else {
+            $n
+        }
+        "  ${e}[90m${dt}${e}[0m  ${e}[33m${sz}${e}[0m  ${colored}"
+    }
+}
+Set-Alias -Name ls -Value Show-ColorDir -Scope Global -Force
+Set-Alias -Name ll -Value Show-ColorDir -Scope Global -Force
+
+# PSReadLine syntax colors
+try {
+    Set-PSReadLineOption -Colors @{
+        Command   = 'Green'
+        Parameter = 'DarkCyan'
+        String    = 'DarkYellow'
+        Operator  = 'DarkGray'
+        Variable  = 'Cyan'
+        Number    = 'Yellow'
+        Type      = 'Blue'
+        Comment   = 'DarkGreen'
+        Keyword   = 'Magenta'
+    }
+} catch {}
+
+Clear-Host
+"#),
+        "cmd" => ("novashell_init.cmd", r#"@echo off
+prompt $E[36m%USERNAME%$E[90m@$E[35m%COMPUTERNAME%$E[0m $E[34m$P$E[32m $g$E[0m
+cls
+"#),
+        "bash" => ("novashell_init.sh", r#"
+export PS1='\[\e[36m\]\u\[\e[90m\]@\[\e[35m\]\h\[\e[0m\] \[\e[34m\]\w\[\e[32m\] \$\[\e[0m\] '
+export CLICOLOR=1
+export LS_COLORS='di=1;34:fi=0:ln=1;36:pi=33:so=1;35:bd=1;33:cd=1;33:or=31:mi=31:ex=1;32:*.zip=1;31:*.tar=1;31:*.gz=1;31:*.jpg=1;35:*.png=1;35:*.mp3=1;36:*.mp4=1;36:*.pdf=33:*.md=33'
+alias ls='ls --color=auto'
+alias ll='ls -la --color=auto'
+alias grep='grep --color=auto'
+clear
+"#),
+        "zsh" => ("novashell_init.zsh", r#"
+export PROMPT='%F{cyan}%n%F{8}@%F{magenta}%m%f %F{blue}%~%F{green} %%%f '
+export CLICOLOR=1
+export LS_COLORS='di=1;34:fi=0:ln=1;36:pi=33:so=1;35:bd=1;33:cd=1;33:or=31:mi=31:ex=1;32:*.zip=1;31:*.tar=1;31:*.gz=1;31:*.jpg=1;35:*.png=1;35:*.mp3=1;36:*.mp4=1;36:*.pdf=33:*.md=33'
+alias ls='ls --color=auto'
+alias ll='ls -la --color=auto'
+alias grep='grep --color=auto'
+clear
+"#),
+        _ => return Err("Unknown shell type".to_string()),
+    };
+
+    let path = tmp.join(filename);
+    std::fs::write(&path, content).map_err(|e| format!("Failed to write init script: {}", e))?;
+    Ok(path.to_string_lossy().to_string())
+}
+
 const ALLOWED_COMMANDS: &[&str] = &[
     "git", "docker", "node", "npm", "npx", "python", "python3", "pip", "pip3",
     "hostname", "uptime", "powershell", "powershell.exe",
@@ -611,6 +701,7 @@ fn main() {
             debug_log_cleanup,
             debug_log_get_dir,
             run_command_output,
+            write_shell_init_script,
         ])
         .run(tauri::generate_context!())
         .expect("error while running NovaShell");

@@ -423,31 +423,40 @@ export function TerminalPanel() {
           rows: terminal.rows,
         });
 
-        // Inject colored prompt — send commands sequentially with delays
+        // Load colored environment from init script file
+        // Writing to file avoids PSReadLine input issues with long commands
         const colorSid = sessionId;
-        const sendPty = (data: string, delay: number) => {
-          setTimeout(() => invoke("write_to_pty", { sessionId: colorSid, data: data + "\r" }), delay);
-        };
-
         const shellLower = shellPath.toLowerCase();
-        if (shellLower.includes("powershell") || shellLower.includes("pwsh")) {
-          // 1) Colored prompt using $([char]27) — guaranteed PS 5.1+ compat
-          sendPty('function prompt { "$([char]27)[36m$env:USERNAME$([char]27)[90m@$([char]27)[35m$env:COMPUTERNAME$([char]27)[0m $([char]27)[34m$($executionContext.SessionState.Path.CurrentLocation)$([char]27)[32m >$([char]27)[0m " }', 1200);
-          // 2) PSReadLine syntax highlighting (colors while typing commands)
-          sendPty('try { Set-PSReadLineOption -Colors @{ Command = "Green"; Parameter = "DarkCyan"; String = "DarkYellow"; Operator = "DarkGray"; Variable = "Cyan"; Number = "Yellow"; Type = "Blue"; Comment = "DarkGreen"; Keyword = "Magenta" } } catch {}', 1700);
-          // 3) Clear to show clean prompt
-          sendPty('Clear-Host', 2200);
-        } else if (shellLower.includes("cmd")) {
-          sendPty("prompt $E[36m%USERNAME%$E[90m@$E[35m%COMPUTERNAME%$E[0m $E[34m$P$E[32m $g$E[0m ", 1200);
-          sendPty("cls", 1600);
-        } else if (shellLower.includes("bash")) {
-          sendPty("export PS1='\\[\\e[36m\\]\\u\\[\\e[90m\\]@\\[\\e[35m\\]\\h\\[\\e[0m\\] \\[\\e[34m\\]\\w\\[\\e[32m\\] \\$\\[\\e[0m\\] '", 800);
-          sendPty("export CLICOLOR=1 && export LS_COLORS='di=1;34:fi=0:ln=1;36:pi=33:so=1;35:bd=1;33:cd=1;33:or=31:mi=31:ex=1;32'", 1000);
-          sendPty("clear", 1200);
-        } else if (shellLower.includes("zsh")) {
-          sendPty("export PROMPT='%F{cyan}%n%F{8}@%F{magenta}%m%f %F{blue}%~%F{green} %%%f '", 800);
-          sendPty("export CLICOLOR=1 && export LS_COLORS='di=1;34:fi=0:ln=1;36:pi=33:so=1;35:bd=1;33:cd=1;33:or=31:mi=31:ex=1;32'", 1000);
-          sendPty("clear", 1200);
+        let shellType = "unknown";
+        if (shellLower.includes("powershell") || shellLower.includes("pwsh")) shellType = "powershell";
+        else if (shellLower.includes("cmd")) shellType = "cmd";
+        else if (shellLower.includes("bash")) shellType = "bash";
+        else if (shellLower.includes("zsh")) shellType = "zsh";
+
+        if (shellType !== "unknown") {
+          (async () => {
+            try {
+              const scriptPath = await invoke<string>("write_shell_init_script", { shellType });
+              // Wait for shell to be fully ready, then source the init script
+              const sourceDelay = shellType === "powershell" ? 2000 : 800;
+              setTimeout(() => {
+                let sourceCmd = "";
+                if (shellType === "powershell") {
+                  // Use & operator to run script file — . (dot-source) imports into current scope
+                  const escaped = scriptPath.replace(/\\/g, "\\\\").replace(/'/g, "''");
+                  sourceCmd = `. '${escaped}'`;
+                } else if (shellType === "cmd") {
+                  sourceCmd = `"${scriptPath}"`;
+                } else {
+                  // bash / zsh
+                  sourceCmd = `. "${scriptPath}"`;
+                }
+                invoke("write_to_pty", { sessionId: colorSid, data: sourceCmd + "\r" });
+              }, sourceDelay);
+            } catch {
+              // Fallback: no colored init, shell still works
+            }
+          })();
         }
       } catch {
         terminal.writeln("\x1b[1;36m  _   _                  ____  _          _ _  \x1b[0m");
