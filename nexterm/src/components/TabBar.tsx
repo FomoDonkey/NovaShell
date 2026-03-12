@@ -27,11 +27,15 @@ export function TabBar() {
   const [menuPos, setMenuPos] = useState({ top: 0, left: 0 });
   const btnRef = useRef<HTMLButtonElement>(null);
 
+  const dropdownRef = useRef<HTMLDivElement>(null);
+
   // Close menu on outside click
   useEffect(() => {
     if (!showShellMenu) return;
     const handleClick = (e: MouseEvent) => {
-      if (btnRef.current && btnRef.current.contains(e.target as Node)) return;
+      const target = e.target as Node;
+      if (btnRef.current && btnRef.current.contains(target)) return;
+      if (dropdownRef.current && dropdownRef.current.contains(target)) return;
       setShowShellMenu(false);
     };
     document.addEventListener("mousedown", handleClick);
@@ -81,6 +85,7 @@ export function TabBar() {
       </button>
       {showShellMenu && createPortal(
         <div
+          ref={dropdownRef}
           className="shell-dropdown animate-slide-up"
           style={{
             position: "fixed",

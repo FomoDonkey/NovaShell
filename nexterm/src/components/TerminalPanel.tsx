@@ -226,7 +226,6 @@ export function TerminalPanel() {
 
       useAppStore.getState().incrementCommandCount();
       useAppStore.getState().addHistory({ command: joined, shell: "terminal" });
-      useAppStore.getState().checkAchievements();
     });
 
     return () => setExecuteSnippet(null);
@@ -316,8 +315,7 @@ export function TerminalPanel() {
             if (cmd) {
               useAppStore.getState().addHistory({ command: cmd, shell: tab?.shellType || "powershell" });
               useAppStore.getState().incrementCommandCount();
-              useAppStore.getState().checkAchievements();
-            }
+                    }
             ptyInputBuffer = "";
             setShowAutocomplete(false);
           } else if (data === "\x7f" || data === "\b") {
@@ -380,8 +378,7 @@ export function TerminalPanel() {
               handleDemoCommand(terminal, lineBuffer.trim());
               useAppStore.getState().addHistory({ command: lineBuffer.trim(), shell: "demo" });
               useAppStore.getState().incrementCommandCount();
-              useAppStore.getState().checkAchievements();
-            }
+                    }
             lineBuffer = "";
             inputBufferRef.current = "";
             terminal.write("\x1b[32mnovashell\x1b[0m \x1b[34m~\x1b[0m $ ");

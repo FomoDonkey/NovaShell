@@ -1,7 +1,6 @@
 import { useEffect, useState } from "react";
 import {
   GitBranch,
-  Wifi,
   Clock,
   Zap,
   Terminal,
@@ -133,10 +132,6 @@ export function StatusBar() {
         <div className="statusbar-item">
           <Zap size={12} />
           <span>UTF-8</span>
-        </div>
-        <div className="statusbar-item">
-          <Wifi size={12} />
-          <span>Online</span>
         </div>
         <div className="statusbar-item">
           <Clock size={12} />

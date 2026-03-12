@@ -5,7 +5,6 @@ import { TabBar } from "./components/TabBar";
 import { TerminalPanel } from "./components/TerminalPanel";
 import { Sidebar } from "./components/Sidebar";
 import { StatusBar } from "./components/StatusBar";
-import { AchievementToast } from "./components/AchievementToast";
 import { UpdateNotification } from "./components/UpdateNotification";
 import { useAppStore } from "./store/appStore";
 
@@ -85,7 +84,6 @@ function App() {
         </AnimatePresence>
       </div>
       <MemoizedStatusBar />
-      <AchievementToast />
       <UpdateNotification />
     </div>
   );

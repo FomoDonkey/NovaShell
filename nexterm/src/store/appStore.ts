@@ -65,15 +65,6 @@ export interface DebugLogEntry {
   source: string; // tab name or SSH connection
 }
 
-export interface Achievement {
-  id: string;
-  name: string;
-  description: string;
-  icon: string;
-  unlocked: boolean;
-  unlockedAt?: number;
-}
-
 interface AppState {
   theme: ThemeName;
   themesVisited: string[];
@@ -144,9 +135,6 @@ interface AppState {
   splitMode: "none" | "horizontal" | "vertical";
   setSplitMode: (mode: AppState["splitMode"]) => void;
 
-  achievements: Achievement[];
-  checkAchievements: () => void;
-
   sshConnections: SSHConnection[];
   addSSHConnection: (conn: Omit<SSHConnection, "id" | "status">) => void;
   updateSSHConnection: (id: string, updates: Partial<SSHConnection>) => void;
@@ -168,10 +156,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   themesVisited: ["dark"] as string[],
   setTheme: (theme) => set((s) => {
     const visited = s.themesVisited.includes(theme) ? s.themesVisited : [...s.themesVisited, theme];
-    const achievements = visited.length >= 4
-      ? s.achievements.map((a) => a.id === "theme-switcher" && !a.unlocked ? { ...a, unlocked: true, unlockedAt: Date.now() } : a)
-      : s.achievements;
-    return { theme, themesVisited: visited, achievements };
+    return { theme, themesVisited: visited };
   }),
 
   tabs: [{ id: "tab-0", title: "Terminal 1", shellType: "powershell", sessionId: null }],
@@ -232,9 +217,6 @@ export const useAppStore = create<AppState>((set, get) => ({
   addSnippet: (snippet) =>
     set((s) => ({
       snippets: [...s.snippets, { ...snippet, id: crypto.randomUUID() }],
-      achievements: s.achievements.map((a) =>
-        a.id === "snippet-creator" && !a.unlocked ? { ...a, unlocked: true, unlockedAt: Date.now() } : a
-      ),
     })),
   removeSnippet: (id) =>
     set((s) => ({ snippets: s.snippets.filter((sn) => sn.id !== id) })),
@@ -298,42 +280,6 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   splitMode: "none",
   setSplitMode: (splitMode) => set({ splitMode }),
-
-  achievements: [
-    { id: "first-cmd", name: "First Steps", description: "Execute your first command", icon: "terminal", unlocked: false },
-    { id: "10-cmds", name: "Getting Started", description: "Execute 10 commands", icon: "zap", unlocked: false },
-    { id: "50-cmds", name: "Power User", description: "Execute 50 commands", icon: "flame", unlocked: false },
-    { id: "100-cmds", name: "Terminal Master", description: "Execute 100 commands", icon: "crown", unlocked: false },
-    { id: "theme-switcher", name: "Fashionista", description: "Try all 4 themes", icon: "palette", unlocked: false },
-    { id: "snippet-creator", name: "Macro Wizard", description: "Create a custom snippet", icon: "code", unlocked: false },
-    { id: "multi-tab", name: "Multitasker", description: "Open 3+ tabs simultaneously", icon: "layers", unlocked: false },
-    { id: "focus-master", name: "Deep Focus", description: "Use focus mode", icon: "eye", unlocked: false },
-    { id: "hour-session", name: "Marathon", description: "Session longer than 1 hour", icon: "clock", unlocked: false },
-    { id: "split-screen", name: "Divide & Conquer", description: "Use split panes", icon: "columns", unlocked: false },
-  ],
-  checkAchievements: () => {
-    const state = get();
-    const updated = state.achievements.map((a) => {
-      if (a.unlocked) return a;
-      let shouldUnlock = false;
-      switch (a.id) {
-        case "first-cmd": shouldUnlock = state.commandCount >= 1; break;
-        case "10-cmds": shouldUnlock = state.commandCount >= 10; break;
-        case "50-cmds": shouldUnlock = state.commandCount >= 50; break;
-        case "100-cmds": shouldUnlock = state.commandCount >= 100; break;
-        case "multi-tab": shouldUnlock = state.tabs.length >= 3; break;
-        case "focus-master": shouldUnlock = state.focusMode; break;
-        case "split-screen": shouldUnlock = state.splitMode !== "none"; break;
-        case "hour-session": shouldUnlock = (Date.now() - state.sessionStartTime) >= 3600000; break;
-        default: break;
-      }
-      if (shouldUnlock) return { ...a, unlocked: true, unlockedAt: Date.now() };
-      return a;
-    });
-    if (JSON.stringify(updated) !== JSON.stringify(state.achievements)) {
-      set({ achievements: updated });
-    }
-  },
 
   sshConnections: (() => {
     try {

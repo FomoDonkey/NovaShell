@@ -13,20 +13,11 @@ import {
   MemoryStick,
   Activity,
   HardDrive,
-  Trophy,
   Folder,
   FolderOpen,
   FolderPlus,
   File,
   ArrowLeft,
-  Terminal,
-  Zap,
-  Flame,
-  Crown,
-  Palette,
-  Layers,
-  Clock,
-  Columns,
   Monitor,
   Bug,
   GripVertical,
@@ -212,18 +203,23 @@ function SnippetsPanel() {
     });
   };
 
-  const handleDragStart = (snippetId: string) => {
+  const handleDragStart = (e: React.DragEvent, snippetId: string) => {
+    e.dataTransfer.setData("text/plain", snippetId);
+    e.dataTransfer.effectAllowed = "move";
     setDragSnippetId(snippetId);
   };
 
   const handleDragOver = (e: React.DragEvent, folderId: string | null) => {
     e.preventDefault();
+    e.dataTransfer.dropEffect = "move";
     setDragOverFolder(folderId);
   };
 
-  const handleDrop = (folderId: string | undefined) => {
-    if (dragSnippetId) {
-      moveSnippetToFolder(dragSnippetId, folderId);
+  const handleDrop = (e: React.DragEvent, folderId: string | undefined) => {
+    e.preventDefault();
+    const snippetId = dragSnippetId || e.dataTransfer.getData("text/plain");
+    if (snippetId) {
+      moveSnippetToFolder(snippetId, folderId);
       setDragSnippetId(null);
       setDragOverFolder(null);
     }
@@ -277,7 +273,7 @@ function SnippetsPanel() {
         className="snippet-card"
         style={{ flexDirection: "column", alignItems: "stretch", gap: 0, cursor: "grab" }}
         draggable
-        onDragStart={() => handleDragStart(snippet.id)}
+        onDragStart={(e) => handleDragStart(e, snippet.id)}
         onDragEnd={() => { setDragSnippetId(null); setDragOverFolder(null); }}
       >
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
@@ -397,7 +393,7 @@ function SnippetsPanel() {
             style={{ marginBottom: 6 }}
             onDragOver={(e) => handleDragOver(e, folder.id)}
             onDragLeave={() => setDragOverFolder(null)}
-            onDrop={() => handleDrop(folder.id)}
+            onDrop={(e) => handleDrop(e, folder.id)}
           >
             {/* Folder header */}
             <div
@@ -440,6 +436,11 @@ function SnippetsPanel() {
               )}
               <span style={{ fontSize: 9, color: "var(--text-muted)", flexShrink: 0 }}>{folderSnippets.length}</span>
               <button
+                onClick={(e) => { e.stopPropagation(); setAddToFolder(folder.id); setAdding(true); setAddingFolder(false); if (collapsedFolders.has(folder.id)) toggleFolder(folder.id); }}
+                style={{ background: "none", border: "none", color: "var(--accent-primary)", cursor: "pointer", padding: 2, display: "flex" }}
+                title="Add snippet to folder"
+              ><Plus size={10} /></button>
+              <button
                 onClick={(e) => { e.stopPropagation(); setEditingFolderId(folder.id); setEditFolderName(folder.name); }}
                 style={{ background: "none", border: "none", color: "var(--text-muted)", cursor: "pointer", padding: 2, display: "flex" }}
                 title="Rename folder"
@@ -470,7 +471,7 @@ function SnippetsPanel() {
       <div
         onDragOver={(e) => handleDragOver(e, "root")}
         onDragLeave={() => setDragOverFolder(null)}
-        onDrop={() => handleDrop(undefined)}
+        onDrop={(e) => handleDrop(e, undefined)}
         style={{
           borderRadius: "var(--radius-sm)",
           border: dragOverFolder === "root" ? "1px dashed var(--accent-primary)" : "1px solid transparent",
@@ -662,19 +663,11 @@ function PluginsPanel() {
   );
 }
 
-const achievementIcons: Record<string, typeof Terminal> = {
-  terminal: Terminal, zap: Zap, flame: Flame, crown: Crown,
-  palette: Palette, code: Code2, layers: Layers, eye: Eye,
-  clock: Clock, columns: Columns,
-};
-
 function StatsPanel() {
   const systemStats = useAppStore((s) => s.systemStats);
   const sessionStartTime = useAppStore((s) => s.sessionStartTime);
   const commandCount = useAppStore((s) => s.commandCount);
   const errorCount = useAppStore((s) => s.errorCount);
-  const achievements = useAppStore((s) => s.achievements);
-  const checkAchievements = useAppStore((s) => s.checkAchievements);
   const [sessionTime, setSessionTime] = useState("0m");
 
   useEffect(() => {
@@ -693,15 +686,8 @@ function StatsPanel() {
     return () => clearInterval(interval);
   }, [sessionStartTime]);
 
-  // Check achievements only when command count changes
-  useEffect(() => {
-    checkAchievements();
-  }, [commandCount, checkAchievements]);
-
   const stats = systemStats || { cpu: 23, memoryUsed: 8_500_000_000, memoryTotal: 16_000_000_000, memoryPercent: 53, processes: 142 };
   const formatBytes = (bytes: number) => `${(bytes / (1024 * 1024 * 1024)).toFixed(1)} GB`;
-
-  const unlockedCount = achievements.filter((a) => a.unlocked).length;
 
   return (
     <div>
@@ -744,60 +730,6 @@ function StatsPanel() {
               <span style={{ color: item.color, fontWeight: 600 }}>{item.value}</span>
             </div>
           ))}
-        </div>
-      </div>
-
-      <div style={{ marginTop: 16 }}>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
-          <span className="sidebar-section-title" style={{ margin: 0 }}>Achievements</span>
-          <span style={{ fontSize: 11, color: "var(--accent-primary)", fontWeight: 600 }}>
-            {unlockedCount}/{achievements.length}
-          </span>
-        </div>
-
-        <div className="stat-bar" style={{ marginBottom: 12 }}>
-          <div className="stat-bar-fill" style={{ width: `${(unlockedCount / achievements.length) * 100}%` }} />
-        </div>
-
-        <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-          {achievements.map((achievement) => {
-            const Icon = achievementIcons[achievement.icon] || Trophy;
-            return (
-              <div
-                key={achievement.id}
-                style={{
-                  display: "flex", alignItems: "center", gap: 10,
-                  padding: "8px 10px",
-                  background: achievement.unlocked ? "var(--bg-hover)" : "var(--bg-tertiary)",
-                  border: `1px solid ${achievement.unlocked ? "var(--accent-primary)" : "var(--border-subtle)"}`,
-                  borderRadius: "var(--radius-sm)",
-                  opacity: achievement.unlocked ? 1 : 0.5,
-                  transition: "all 0.3s ease",
-                }}
-              >
-                <div style={{
-                  width: 28, height: 28, borderRadius: "var(--radius-sm)",
-                  background: achievement.unlocked ? "var(--accent-primary)" : "var(--bg-active)",
-                  display: "flex", alignItems: "center", justifyContent: "center",
-                  color: achievement.unlocked ? "white" : "var(--text-muted)",
-                  flexShrink: 0,
-                }}>
-                  <Icon size={14} />
-                </div>
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontSize: 12, fontWeight: 600, color: achievement.unlocked ? "var(--text-primary)" : "var(--text-muted)" }}>
-                    {achievement.name}
-                  </div>
-                  <div style={{ fontSize: 10, color: "var(--text-muted)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                    {achievement.description}
-                  </div>
-                </div>
-                {achievement.unlocked && (
-                  <Trophy size={12} style={{ color: "var(--accent-warning)", flexShrink: 0 }} />
-                )}
-              </div>
-            );
-          })}
         </div>
       </div>
     </div>
