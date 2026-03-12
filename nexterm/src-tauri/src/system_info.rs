@@ -14,7 +14,7 @@ pub struct SystemStats {
     pub uptime: u64,
 }
 
-// Refresh process count only every 5th call (~2.5 min at 30s intervals)
+// Refresh process count only every 10th call (~10 min at 60s intervals)
 // to avoid the heavy enumerate-all-processes syscall on every poll
 static CALL_COUNTER: AtomicUsize = AtomicUsize::new(0);
 static CACHED_PROCESS_COUNT: AtomicUsize = AtomicUsize::new(0);
@@ -24,7 +24,7 @@ pub fn get_stats(sys: &mut System) -> SystemStats {
     sys.refresh_memory();
 
     let count = CALL_COUNTER.fetch_add(1, Ordering::Relaxed);
-    let processes_count = if count % 5 == 0 {
+    let processes_count = if count % 10 == 0 {
         sys.refresh_processes();
         let n = sys.processes().len();
         CACHED_PROCESS_COUNT.store(n, Ordering::Relaxed);

@@ -85,6 +85,13 @@ async fn create_pty_session(
     state: State<'_, AppState>,
     app_handle: tauri::AppHandle,
 ) -> Result<String, String> {
+    {
+        let sessions = state.sessions.lock()
+            .map_err(|e| format!("Session lock error: {}", e))?;
+        if sessions.len() >= 20 {
+            return Err("Maximum number of terminal sessions reached (20)".to_string());
+        }
+    }
     let session_id = uuid::Uuid::new_v4().to_string();
     let session = pty_manager::PtySession::new(&shell_path, &session_id, app_handle)
         .map_err(|e| e.to_string())?;
@@ -321,6 +328,13 @@ async fn ssh_connect(
     state: State<'_, AppState>,
     app_handle: tauri::AppHandle,
 ) -> Result<String, String> {
+    {
+        let sessions = state.ssh_sessions.lock()
+            .map_err(|e| format!("SSH session lock error: {}", e))?;
+        if sessions.len() >= 10 {
+            return Err("Maximum number of SSH sessions reached (10)".to_string());
+        }
+    }
     let session_id = uuid::Uuid::new_v4().to_string();
     let session = ssh_manager::SshSession::new(
         &host,

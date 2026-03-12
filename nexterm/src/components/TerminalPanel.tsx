@@ -247,7 +247,7 @@ export function TerminalPanel() {
         cursorStyle: "bar",
         theme: colors,
         allowProposedApi: true,
-        scrollback: 5000,
+        scrollback: 3000,
         tabStopWidth: 4,
       });
 

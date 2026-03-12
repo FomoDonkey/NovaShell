@@ -282,7 +282,7 @@ export function SSHPanel() {
       cursorStyle: "bar",
       theme: colors,
       allowProposedApi: true,
-      scrollback: 5000,
+      scrollback: 3000,
     });
 
     const fitAddon = new FitAddon();

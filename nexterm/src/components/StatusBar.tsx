@@ -50,7 +50,7 @@ export function StatusBar() {
       }
     };
     fetchBranch();
-    const branchInterval = setInterval(fetchBranch, 30000);
+    const branchInterval = setInterval(fetchBranch, 60000);
 
     const fetchStats = async () => {
       try {
@@ -80,7 +80,7 @@ export function StatusBar() {
       }
     };
     fetchStats();
-    const statsInterval = setInterval(fetchStats, 30000);
+    const statsInterval = setInterval(fetchStats, 60000);
     return () => { clearInterval(branchInterval); clearInterval(statsInterval); };
   }, [setGitBranch, setSystemStats]);
 

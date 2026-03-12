@@ -329,7 +329,7 @@ export const useAppStore = create<AppState>((set, get) => ({
         timestamp: Date.now(),
       };
       const logs = [newEntry, ...s.debugLogs];
-      if (logs.length > 2000) logs.length = 2000;
+      if (logs.length > 1000) logs.length = 1000;
       // Queue for disk persistence
       if (s.debugPersist) {
         debugPersistQueue.push(newEntry);
