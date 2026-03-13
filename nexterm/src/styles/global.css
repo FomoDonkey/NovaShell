@@ -443,6 +443,8 @@ body {
 
 .terminal-instance .xterm {
   height: 100%;
+  user-select: text;
+  -webkit-user-select: text;
 }
 
 .terminal-instance .xterm-viewport {

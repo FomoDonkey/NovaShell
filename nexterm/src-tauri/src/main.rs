@@ -533,6 +533,8 @@ function global:Show-ColorDir {
         "  ${e}[90m${dt}${e}[0m  ${e}[33m${sz}${e}[0m  ${colored}"
     }
 }
+# Override ls with function (functions take precedence over AllScope aliases)
+function global:ls { Show-ColorDir @args }
 Set-Alias -Name ll -Value Show-ColorDir -Scope Global -Force
 
 # PSReadLine syntax colors

@@ -1,6 +1,7 @@
 import { useEffect, useRef, useCallback, useState } from "react";
 import { Terminal } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
+import { CanvasAddon } from "@xterm/addon-canvas";
 import { WebLinksAddon } from "@xterm/addon-web-links";
 import { SearchAddon } from "@xterm/addon-search";
 import "@xterm/xterm/css/xterm.css";
@@ -259,6 +260,15 @@ export function TerminalPanel() {
       terminal.loadAddon(searchAddon);
 
       terminal.open(container);
+
+      // Load canvas renderer AFTER open() for proper cursor, selection, and color rendering
+      // Without this, xterm v5 uses DOM renderer which has issues in WebView2
+      try {
+        terminal.loadAddon(new CanvasAddon());
+      } catch {
+        // Canvas addon failed, DOM renderer will be used as fallback
+      }
+
       fitAddon.fit();
 
       let sessionId: string | null = null;
