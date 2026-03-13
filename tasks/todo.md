@@ -45,6 +45,15 @@
 - [x] Snippets: Vista expandida con numeros de linea
 - [x] Snippets: Ejemplo "Git Quick Push" por defecto
 
+- [x] v1.0.4: Cyberpunk theme fix, ghost window, debug noise, perf, resource leaks
+- [x] v1.0.5: Resizable sidebar (260-700px), shell selector dropdown fix
+- [x] v1.0.6: Updater signing fix (jq), ghost window elimination (file-based git), notification layout
+- [x] v1.0.7: Shell dropdown via portal (createPortal), revert update notification changes
+- [x] v1.0.8: Snippet folder organization (drag & drop, collapsible, color-coded, rename/delete)
+
+- [x] v1.3.1: Fix PTY batching (two-thread reader+flusher), remove AllScope alias error, restore cursor/selection, fix tab close crash
+
 ## Pending
+- [ ] Push v1.3.1, tag, CI, and publish release
 - [ ] Test full SSH flow end-to-end
 - [ ] Test debug panel with real terminal output

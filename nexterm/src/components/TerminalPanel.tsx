@@ -242,7 +242,9 @@ export function TerminalPanel() {
         lineHeight: 1.4,
         cursorBlink: true,
         cursorStyle: "block",
+        cursorWidth: 2,
         theme: colors,
+        allowTransparency: true,
         allowProposedApi: true,
         scrollback: 3000,
         tabStopWidth: 4,
@@ -527,20 +529,33 @@ export function TerminalPanel() {
 
   useEffect(() => {
     const currentTabIds = new Set(tabs.map((t) => t.id));
-    terminalsRef.current.forEach((ref, tabId) => {
+    const toRemove: string[] = [];
+    terminalsRef.current.forEach((_ref, tabId) => {
       if (!currentTabIds.has(tabId)) {
-        ref.disposables.forEach((d) => d.dispose());
-        ref.unlisteners.forEach((fn) => fn());
-        if (ref.sessionId) {
-          getTauriCore().then(({ invoke }) => {
-            invoke("close_pty_session", { sessionId: ref.sessionId });
-          }).catch(() => {});
-        }
-        ref.terminal.dispose();
-        terminalsRef.current.delete(tabId);
-        containersRef.current.delete(tabId);
+        toRemove.push(tabId);
       }
     });
+    for (const tabId of toRemove) {
+      const ref = terminalsRef.current.get(tabId);
+      if (!ref) continue;
+      // Remove from maps FIRST to prevent double-cleanup
+      terminalsRef.current.delete(tabId);
+      containersRef.current.delete(tabId);
+      // Unsubscribe event listeners before closing PTY
+      ref.unlisteners.forEach((fn) => fn());
+      ref.disposables.forEach((d) => d.dispose());
+      // Close PTY session, then dispose terminal after PTY is cleaned up
+      const sid = ref.sessionId;
+      if (sid) {
+        getTauriCore().then(({ invoke }) => {
+          invoke("close_pty_session", { sessionId: sid }).catch(() => {});
+        }).catch(() => {}).finally(() => {
+          ref.terminal.dispose();
+        });
+      } else {
+        ref.terminal.dispose();
+      }
+    }
   }, [tabs]);
 
   useEffect(() => {

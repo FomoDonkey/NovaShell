@@ -533,7 +533,6 @@ function global:Show-ColorDir {
         "  ${e}[90m${dt}${e}[0m  ${e}[33m${sz}${e}[0m  ${colored}"
     }
 }
-Set-Alias -Name ls -Value Show-ColorDir -Scope Global -Force
 Set-Alias -Name ll -Value Show-ColorDir -Scope Global -Force
 
 # PSReadLine syntax colors
