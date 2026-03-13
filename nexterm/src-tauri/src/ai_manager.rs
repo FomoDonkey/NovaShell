@@ -147,36 +147,34 @@ pub async fn generate_session_doc(
     duration_minutes: u64,
 ) -> Result<String, String> {
     let prompt = format!(
-        r#"Generate a clear, professional session documentation in markdown format for a terminal session.
+        r###"Write professional technical documentation for this terminal session. Write it as a fluid, readable narrative — NOT a dry list of commands.
 
-## Session Data:
+SESSION DATA:
 - Duration: {} minutes
-- Commands executed ({} total):
+- Commands ({} total): {}
 {}
 
-{}
-
-## Instructions:
-- Write a concise summary of what was accomplished
-- Group related commands into logical sections
-- Highlight any errors and how they were resolved (if applicable)
-- Use proper markdown formatting with headers, code blocks, and bullet points
-- Include a "Commands Reference" section with the key commands used
-- Write in the same language as the commands/errors suggest (English by default)
-- Keep it professional and useful for future reference"#,
+WRITING STYLE:
+- Start with a title (# Session Report) and a brief overview paragraph describing the session goal and outcome
+- Organize into logical sections with clear ## headings based on what was accomplished (e.g., "## Project Setup", "## Debugging Network Issues")
+- For each section, write a short narrative explaining WHAT was done and WHY, then show the relevant commands in code blocks
+- After each command or group of commands, explain what it does and what the expected result is — assume the reader may not know every flag or tool
+- If there were errors, dedicate a section to "## Issues Encountered" explaining each error in plain language and how it was addressed
+- End with a "## Summary" section with key takeaways and results
+- Write in the same language the commands/context suggest (default: English)
+- Be professional, clear, and educational — this should read like a well-written tutorial, not a log dump"###,
         duration_minutes,
         commands.len(),
         commands
             .iter()
-            .enumerate()
-            .map(|(i, c)| format!("{}. `{}`", i + 1, c))
+            .map(|c| format!("`{}`", c))
             .collect::<Vec<_>>()
-            .join("\n"),
+            .join(", "),
         if errors.is_empty() {
             "No errors during session.".to_string()
         } else {
             format!(
-                "Errors encountered ({}):\n{}",
+                "Errors ({}):\n{}",
                 errors.len(),
                 errors
                     .iter()
@@ -194,7 +192,7 @@ pub async fn generate_session_doc(
 
     chat(
         MODEL_DOCS,
-        "You are a technical documentation expert. Generate clean, well-structured markdown documentation for terminal sessions. Be concise but thorough.",
+        "You are a senior technical writer. You produce clear, professional documentation that reads like a polished guide — fluid prose with well-explained commands, not just bullet lists. Every command you mention gets a brief explanation of what it does. Your writing is structured, educational, and easy to follow.",
         &messages,
     )
     .await
