@@ -73,6 +73,7 @@ interface PersistedConfig {
   sshConnections?: Array<Omit<SSHConnection, "status" | "sessionId" | "errorMessage" | "sessionPassword">>;
   plugins?: PluginEntry[];
   history?: HistoryEntry[];
+  debugEnabled?: boolean;
   debugPersist?: boolean;
 }
 
@@ -101,6 +102,7 @@ function scheduleSave() {
       sshConnections: s.sshConnections.map(({ status, sessionId, errorMessage, sessionPassword, ...rest }) => rest),
       plugins: s.plugins,
       history: s.history.slice(0, 200), // persist last 200 commands
+      debugEnabled: s.debugEnabled,
       debugPersist: s.debugPersist,
     };
     import("@tauri-apps/api/core").then(({ invoke }) => {
@@ -416,7 +418,10 @@ export const useAppStore = create<AppState>((set, get) => ({
       return { debugLogs: logs };
     }),
   clearDebugLogs: () => set({ debugLogs: [] }),
-  toggleDebug: () => set((s) => ({ debugEnabled: !s.debugEnabled })),
+  toggleDebug: () => {
+    set((s) => ({ debugEnabled: !s.debugEnabled }));
+    scheduleSave();
+  },
   toggleDebugPersist: () => {
     set((s) => ({ debugPersist: !s.debugPersist }));
     scheduleSave();
@@ -429,6 +434,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     if (config.snippetFolders) updates.snippetFolders = config.snippetFolders;
     if (config.plugins && config.plugins.length > 0) updates.plugins = config.plugins;
     if (config.history) updates.history = config.history;
+    if (config.debugEnabled !== undefined) updates.debugEnabled = config.debugEnabled;
     if (config.debugPersist !== undefined) updates.debugPersist = config.debugPersist;
     if (config.sshConnections && config.sshConnections.length > 0) {
       updates.sshConnections = config.sshConnections.map((c) => ({
@@ -512,6 +518,7 @@ if (typeof window !== "undefined") {
         sshConnections: s.sshConnections.map(({ status, sessionId, errorMessage, sessionPassword, ...rest }) => rest),
         plugins: s.plugins,
         history: s.history.slice(0, 200),
+        debugEnabled: s.debugEnabled,
         debugPersist: s.debugPersist,
       };
       // Use synchronous XHR-style approach via navigator.sendBeacon isn't available for Tauri

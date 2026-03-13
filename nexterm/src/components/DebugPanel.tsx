@@ -65,6 +65,7 @@ export function DebugPanel() {
   const [loadingSessions, setLoadingSessions] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
   const pausedLogsRef = useRef<DebugLogEntry[]>([]);
+  const autoScrollRef = useRef(true);
 
   // When paused, freeze the displayed logs
   useEffect(() => {
@@ -84,6 +85,25 @@ export function DebugPanel() {
     }
     return true;
   }), [displayLogs, levelFilters, sourceFilter, searchFilter]);
+
+  // Auto-scroll to bottom when new logs arrive (if user hasn't scrolled up)
+  useEffect(() => {
+    if (!paused && autoScrollRef.current && scrollRef.current && view === "live") {
+      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+    }
+  }, [filteredLogs.length, paused, view]);
+
+  // Detect if user scrolled up (disable auto-scroll) or back to bottom (re-enable)
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    const handleScroll = () => {
+      const atBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 30;
+      autoScrollRef.current = atBottom;
+    };
+    el.addEventListener("scroll", handleScroll);
+    return () => el.removeEventListener("scroll", handleScroll);
+  }, []);
 
   // Get unique sources for source filter
   const sources = useMemo(() => [...new Set(displayLogs.map((l) => l.source))], [displayLogs]);
@@ -836,6 +856,8 @@ export function parseTerminalOutput(
     // Users see output in the terminal already; debug console is for errors/warnings/logs
     if (level === "output") continue;
 
-    addLog({ level, message: trimmed, source });
+    // Truncate very long messages to prevent memory issues
+    const msg = trimmed.length > 2000 ? trimmed.slice(0, 2000) + "..." : trimmed;
+    addLog({ level, message: msg, source });
   }
 }

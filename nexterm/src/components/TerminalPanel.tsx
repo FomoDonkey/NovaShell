@@ -25,13 +25,17 @@ async function getTauriEvent() {
 }
 
 // Batched async debug log parsing - never blocks terminal rendering
-const debugParseQueue: Array<{ data: string; source: string }> = [];
+// Uses a per-source buffer to properly handle lines split across PTY chunks
+const debugBuffers = new Map<string, string>();
 let debugParseScheduled = false;
 
 function queueDebugParse(data: string, source: string) {
   if (!useAppStore.getState().debugEnabled) return;
-  if (debugParseQueue.length >= 500) debugParseQueue.splice(0, debugParseQueue.length - 100);
-  debugParseQueue.push({ data, source });
+  // Append to per-source buffer (handles line splits across chunks)
+  const existing = debugBuffers.get(source) || "";
+  // Limit buffer size per source to prevent memory issues (256KB)
+  const combined = existing + data;
+  debugBuffers.set(source, combined.length > 262144 ? combined.slice(-131072) : combined);
   if (!debugParseScheduled) {
     debugParseScheduled = true;
     setTimeout(flushDebugParse, 200);
@@ -40,16 +44,19 @@ function queueDebugParse(data: string, source: string) {
 
 function flushDebugParse() {
   debugParseScheduled = false;
-  if (debugParseQueue.length === 0) return;
-  const items = debugParseQueue.splice(0, debugParseQueue.length);
+  if (debugBuffers.size === 0) return;
   const store = useAppStore.getState();
-  // Merge all chunks then parse once
-  const bySource = new Map<string, string>();
-  for (const item of items) {
-    bySource.set(item.source, (bySource.get(item.source) || "") + item.data);
-  }
-  bySource.forEach((data, source) => {
-    parseTerminalOutput(data, source, store.addDebugLog);
+  debugBuffers.forEach((data, source) => {
+    // Keep incomplete last line in buffer (no trailing newline = might be partial)
+    const lastNewline = data.lastIndexOf("\n");
+    if (lastNewline === -1) {
+      // No complete line yet, keep in buffer
+      return;
+    }
+    const complete = data.slice(0, lastNewline + 1);
+    const remainder = data.slice(lastNewline + 1);
+    debugBuffers.set(source, remainder);
+    parseTerminalOutput(complete, source, store.addDebugLog);
   });
 }
 
