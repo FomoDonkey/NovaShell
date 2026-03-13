@@ -69,6 +69,9 @@ export function Sidebar() {
         {sidebarTab === "ssh" && <SSHPanel />}
         {sidebarTab === "debug" && <DebugPanel />}
       </div>
+      <div style={{ padding: "4px 12px", textAlign: "center", borderTop: "1px solid var(--border-color)", flexShrink: 0 }}>
+        <span style={{ fontSize: 9, color: "var(--text-muted)", opacity: 0.5 }}>NovaShell v{APP_VERSION}</span>
+      </div>
     </div>
   );
 }
