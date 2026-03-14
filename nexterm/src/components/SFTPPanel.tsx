@@ -659,6 +659,13 @@ function SFTPExplorer({
   };
 
   // Drag handlers for file rows
+  const onDragEnd = () => {
+    dragDataRef.current = null;
+    dragCounterLocal.current = 0;
+    dragCounterRemote.current = 0;
+    setDragOver(null);
+  };
+
   const onDragStartLocal = (e: React.DragEvent, entries: LocalFileEntry[]) => {
     dragDataRef.current = {
       side: "local",
@@ -800,6 +807,7 @@ function SFTPExplorer({
                       const selected = localFiles.filter((f) => selectedLocal.has(f.path));
                       onDragStartLocal(e, selected.length > 0 && isSelected ? selected : [entry]);
                     }}
+                    onDragEnd={onDragEnd}
                     onClick={() => toggleLocalSelect(entry.path)}
                     onDoubleClick={() => navigateLocal(entry)}
                     style={{
@@ -907,6 +915,7 @@ function SFTPExplorer({
                       const selected = remoteFiles.filter((f) => selectedRemote.has(f.path));
                       onDragStartRemote(e, selected.length > 0 && isSelected ? selected : [entry]);
                     }}
+                    onDragEnd={onDragEnd}
                     onClick={() => toggleRemoteSelect(entry.path)}
                     onDoubleClick={() => navigateRemote(entry)}
                     style={{

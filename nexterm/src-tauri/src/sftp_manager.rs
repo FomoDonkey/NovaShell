@@ -10,6 +10,12 @@ pub struct SftpSession {
     _tcp: TcpStream, // Keep TCP alive
 }
 
+/// Normalize a remote SFTP path to always use forward slashes.
+/// On Windows, std::path::Path and PathBuf use backslashes which break SFTP.
+fn normalize_remote_path(path: &str) -> String {
+    path.replace('\\', "/")
+}
+
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct RemoteFileEntry {
     pub name: String,
@@ -114,11 +120,11 @@ impl SftpSession {
     }
 
     pub fn list_dir(&self, path: &str) -> Result<Vec<RemoteFileEntry>, String> {
+        let normalized = normalize_remote_path(path);
         self.with_sftp(|sftp| {
-            let remote_path = Path::new(path);
             let entries = sftp
-                .readdir(remote_path)
-                .map_err(|e| format!("Cannot list {}: {}", path, e))?;
+                .readdir(Path::new(&normalized))
+                .map_err(|e| format!("Cannot list {}: {}", normalized, e))?;
 
             let mut result: Vec<RemoteFileEntry> = entries
                 .into_iter()
@@ -127,9 +133,11 @@ impl SftpSession {
                     if name == "." || name == ".." {
                         return None;
                     }
+                    // Always use forward slashes for remote SFTP paths
+                    let full_path = normalize_remote_path(&pathbuf.to_string_lossy());
                     Some(RemoteFileEntry {
                         name,
-                        path: pathbuf.to_string_lossy().to_string(),
+                        path: full_path,
                         is_dir: stat.is_dir(),
                         size: stat.size.unwrap_or(0),
                         permissions: stat.perm.unwrap_or(0),
@@ -150,6 +158,7 @@ impl SftpSession {
     }
 
     pub fn download_file(&self, remote_path: &str, local_path: &str) -> Result<u64, String> {
+        let normalized_remote = normalize_remote_path(remote_path);
         let session = self
             .session
             .lock()
@@ -159,8 +168,8 @@ impl SftpSession {
             .map_err(|e| format!("SFTP subsystem error: {}", e))?;
 
         let mut remote_file = sftp
-            .open(Path::new(remote_path))
-            .map_err(|e| format!("Cannot open remote file {}: {}", remote_path, e))?;
+            .open(Path::new(&normalized_remote))
+            .map_err(|e| format!("Cannot open remote file {}: {}", normalized_remote, e))?;
 
         // Create parent directories if needed
         if let Some(parent) = Path::new(local_path).parent() {
@@ -191,6 +200,7 @@ impl SftpSession {
     }
 
     pub fn upload_file(&self, local_path: &str, remote_path: &str) -> Result<u64, String> {
+        let normalized_remote = normalize_remote_path(remote_path);
         let session = self
             .session
             .lock()
@@ -203,8 +213,8 @@ impl SftpSession {
             .map_err(|e| format!("Cannot open local file {}: {}", local_path, e))?;
 
         let mut remote_file = sftp
-            .create(Path::new(remote_path))
-            .map_err(|e| format!("Cannot create remote file {}: {}", remote_path, e))?;
+            .create(Path::new(&normalized_remote))
+            .map_err(|e| format!("Cannot create remote file {}: {}", normalized_remote, e))?;
 
         let mut buf = [0u8; 32768];
         let mut total: u64 = 0;
@@ -226,45 +236,51 @@ impl SftpSession {
     }
 
     pub fn mkdir(&self, path: &str) -> Result<(), String> {
+        let normalized = normalize_remote_path(path);
         self.with_sftp(|sftp| {
-            sftp.mkdir(Path::new(path), 0o755)
-                .map_err(|e| format!("Cannot create directory {}: {}", path, e))
+            sftp.mkdir(Path::new(&normalized), 0o755)
+                .map_err(|e| format!("Cannot create directory {}: {}", normalized, e))
         })
     }
 
     pub fn delete_file(&self, path: &str) -> Result<(), String> {
+        let normalized = normalize_remote_path(path);
         self.with_sftp(|sftp| {
-            sftp.unlink(Path::new(path))
-                .map_err(|e| format!("Cannot delete {}: {}", path, e))
+            sftp.unlink(Path::new(&normalized))
+                .map_err(|e| format!("Cannot delete {}: {}", normalized, e))
         })
     }
 
     pub fn delete_dir(&self, path: &str) -> Result<(), String> {
+        let normalized = normalize_remote_path(path);
         self.with_sftp(|sftp| {
-            sftp.rmdir(Path::new(path))
-                .map_err(|e| format!("Cannot remove directory {}: {}", path, e))
+            sftp.rmdir(Path::new(&normalized))
+                .map_err(|e| format!("Cannot remove directory {}: {}", normalized, e))
         })
     }
 
     pub fn rename(&self, old_path: &str, new_path: &str) -> Result<(), String> {
+        let old_normalized = normalize_remote_path(old_path);
+        let new_normalized = normalize_remote_path(new_path);
         self.with_sftp(|sftp| {
-            sftp.rename(Path::new(old_path), Path::new(new_path), None)
-                .map_err(|e| format!("Cannot rename {} to {}: {}", old_path, new_path, e))
+            sftp.rename(Path::new(&old_normalized), Path::new(&new_normalized), None)
+                .map_err(|e| format!("Cannot rename {} to {}: {}", old_normalized, new_normalized, e))
         })
     }
 
     pub fn stat(&self, path: &str) -> Result<RemoteFileEntry, String> {
+        let normalized = normalize_remote_path(path);
         self.with_sftp(|sftp| {
             let stat = sftp
-                .stat(Path::new(path))
-                .map_err(|e| format!("Cannot stat {}: {}", path, e))?;
-            let name = Path::new(path)
+                .stat(Path::new(&normalized))
+                .map_err(|e| format!("Cannot stat {}: {}", normalized, e))?;
+            let name = Path::new(&normalized)
                 .file_name()
                 .map(|n| n.to_string_lossy().to_string())
-                .unwrap_or_else(|| path.to_string());
+                .unwrap_or_else(|| normalized.clone());
             Ok(RemoteFileEntry {
                 name,
-                path: path.to_string(),
+                path: normalized.clone(),
                 is_dir: stat.is_dir(),
                 size: stat.size.unwrap_or(0),
                 permissions: stat.perm.unwrap_or(0),
@@ -274,6 +290,7 @@ impl SftpSession {
     }
 
     pub fn read_text_file(&self, remote_path: &str, max_size: u64) -> Result<String, String> {
+        let normalized = normalize_remote_path(remote_path);
         let session = self
             .session
             .lock()
@@ -283,8 +300,8 @@ impl SftpSession {
             .map_err(|e| format!("SFTP subsystem error: {}", e))?;
 
         let stat = sftp
-            .stat(Path::new(remote_path))
-            .map_err(|e| format!("Cannot stat {}: {}", remote_path, e))?;
+            .stat(Path::new(&normalized))
+            .map_err(|e| format!("Cannot stat {}: {}", normalized, e))?;
 
         if stat.size.unwrap_or(0) > max_size {
             return Err(format!(
@@ -295,8 +312,8 @@ impl SftpSession {
         }
 
         let mut file = sftp
-            .open(Path::new(remote_path))
-            .map_err(|e| format!("Cannot open {}: {}", remote_path, e))?;
+            .open(Path::new(&normalized))
+            .map_err(|e| format!("Cannot open {}: {}", normalized, e))?;
 
         let mut content = String::new();
         file.read_to_string(&mut content)
@@ -309,7 +326,7 @@ impl SftpSession {
             let realpath = sftp
                 .realpath(Path::new("."))
                 .map_err(|e| format!("Cannot resolve home: {}", e))?;
-            Ok(realpath.to_string_lossy().to_string())
+            Ok(normalize_remote_path(&realpath.to_string_lossy()))
         })
     }
 
