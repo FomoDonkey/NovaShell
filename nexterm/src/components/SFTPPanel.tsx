@@ -339,6 +339,21 @@ function SFTPExplorer({
   const [activePanel, setActivePanel] = useState<"local" | "remote">("remote");
   const [transferring, setTransferring] = useState(false);
   const transferringRef = useRef(false);
+  const [transferStatus, setTransferStatus] = useState<string | null>(null);
+
+  // Refs to always access current values (avoids stale closures in callbacks)
+  const remoteFilesRef = useRef(remoteFiles);
+  remoteFilesRef.current = remoteFiles;
+  const localFilesRef = useRef(localFiles);
+  localFilesRef.current = localFiles;
+  const selectedRemoteRef = useRef(selectedRemote);
+  selectedRemoteRef.current = selectedRemote;
+  const selectedLocalRef = useRef(selectedLocal);
+  selectedLocalRef.current = selectedLocal;
+  const localPathRef = useRef(localPath);
+  localPathRef.current = localPath;
+  const remotePathRef = useRef(remotePath);
+  remotePathRef.current = remotePath;
 
   // New folder / rename
   const [newFolderName, setNewFolderName] = useState("");
@@ -464,13 +479,23 @@ function SFTPExplorer({
   const localSep = localPath.includes("\\") ? "\\" : "/";
 
   // Download: remote -> local
-  const handleDownload = useCallback(async () => {
-    if (selectedRemote.size === 0 || !localPath || transferringRef.current) return;
-    const files = remoteFiles.filter((f) => selectedRemote.has(f.path) && !f.is_dir);
-    if (files.length === 0) return;
+  const handleDownload = async () => {
+    const curSelected = selectedRemoteRef.current;
+    const curLocalPath = localPathRef.current;
+    const curRemoteFiles = remoteFilesRef.current;
+    const curLocalSep = curLocalPath.includes("\\") ? "\\" : "/";
+
+    if (curSelected.size === 0) { setTransferStatus("No files selected"); return; }
+    if (!curLocalPath) { setTransferStatus("No local path set"); return; }
+    if (transferringRef.current) { setTransferStatus("Transfer already in progress"); return; }
+
+    const files = curRemoteFiles.filter((f) => curSelected.has(f.path) && !f.is_dir);
+    if (files.length === 0) { setTransferStatus("Only directories selected — select files to download"); return; }
 
     transferringRef.current = true;
     setTransferring(true);
+    setTransferStatus(`Downloading ${files.length} file(s)...`);
+
     const newTransfers: TransferItem[] = files.map((f) => ({
       id: crypto.randomUUID(),
       filename: f.name,
@@ -482,35 +507,51 @@ function SFTPExplorer({
 
     try {
       const invoke = await getInvoke();
+      let successCount = 0;
       for (let i = 0; i < files.length; i++) {
         const f = files[i];
         const t = newTransfers[i];
-        const localDest = `${localPath}${localSep}${f.name}`;
+        const localDest = `${curLocalPath}${curLocalSep}${f.name}`;
 
         setTransfers((prev) => prev.map((x) => x.id === t.id ? { ...x, status: "transferring" } : x));
         try {
           await invoke("sftp_download", { sessionId, remotePath: f.path, localPath: localDest });
           setTransfers((prev) => prev.map((x) => x.id === t.id ? { ...x, status: "done" } : x));
+          successCount++;
         } catch (e) {
-          setTransfers((prev) => prev.map((x) => x.id === t.id ? { ...x, status: "error", error: String(e) } : x));
+          const errMsg = String(e);
+          setTransfers((prev) => prev.map((x) => x.id === t.id ? { ...x, status: "error", error: errMsg } : x));
+          setTransferStatus(`Error downloading ${f.name}: ${errMsg}`);
         }
       }
+      if (successCount === files.length) setTransferStatus(`Downloaded ${successCount} file(s)`);
       setSelectedRemote(new Set());
+    } catch (e) {
+      setTransferStatus(`Download failed: ${String(e)}`);
     } finally {
       transferringRef.current = false;
       setTransferring(false);
-      loadLocal(localPath);
+      loadLocal(curLocalPath);
     }
-  }, [selectedRemote, remoteFiles, localPath, localSep, sessionId, getInvoke, loadLocal]);
+  };
 
   // Upload: local -> remote
-  const handleUpload = useCallback(async () => {
-    if (selectedLocal.size === 0 || !remotePath || transferringRef.current) return;
-    const files = localFiles.filter((f) => selectedLocal.has(f.path) && !f.is_dir);
-    if (files.length === 0) return;
+  const handleUpload = async () => {
+    const curSelected = selectedLocalRef.current;
+    const curRemotePath = remotePathRef.current;
+    const curLocalFiles = localFilesRef.current;
+
+    if (curSelected.size === 0) { setTransferStatus("No files selected"); return; }
+    if (!curRemotePath) { setTransferStatus("No remote path set"); return; }
+    if (transferringRef.current) { setTransferStatus("Transfer already in progress"); return; }
+
+    const files = curLocalFiles.filter((f) => curSelected.has(f.path) && !f.is_dir);
+    if (files.length === 0) { setTransferStatus("Only directories selected — select files to upload"); return; }
 
     transferringRef.current = true;
     setTransferring(true);
+    setTransferStatus(`Uploading ${files.length} file(s)...`);
+
     const newTransfers: TransferItem[] = files.map((f) => ({
       id: crypto.randomUUID(),
       filename: f.name,
@@ -522,42 +563,57 @@ function SFTPExplorer({
 
     try {
       const invoke = await getInvoke();
+      let successCount = 0;
       for (let i = 0; i < files.length; i++) {
         const f = files[i];
         const t = newTransfers[i];
-        const remoteDest = `${remotePath}/${f.name}`;
+        const remoteDest = `${curRemotePath}/${f.name}`;
 
         setTransfers((prev) => prev.map((x) => x.id === t.id ? { ...x, status: "transferring" } : x));
         try {
           await invoke("sftp_upload", { sessionId, localPath: f.path, remotePath: remoteDest });
           setTransfers((prev) => prev.map((x) => x.id === t.id ? { ...x, status: "done" } : x));
+          successCount++;
         } catch (e) {
-          setTransfers((prev) => prev.map((x) => x.id === t.id ? { ...x, status: "error", error: String(e) } : x));
+          const errMsg = String(e);
+          setTransfers((prev) => prev.map((x) => x.id === t.id ? { ...x, status: "error", error: errMsg } : x));
+          setTransferStatus(`Error uploading ${f.name}: ${errMsg}`);
         }
       }
+      if (successCount === files.length) setTransferStatus(`Uploaded ${successCount} file(s)`);
       setSelectedLocal(new Set());
+    } catch (e) {
+      setTransferStatus(`Upload failed: ${String(e)}`);
     } finally {
       transferringRef.current = false;
       setTransferring(false);
-      loadRemote(remotePath);
+      loadRemote(curRemotePath);
     }
-  }, [selectedLocal, localFiles, remotePath, sessionId, getInvoke, loadRemote]);
+  };
 
   // Drag & drop transfer
-  const handleDrop = useCallback(async (targetSide: "local" | "remote") => {
+  const handleDrop = async (targetSide: "local" | "remote") => {
     dragCounterLocal.current = 0;
     dragCounterRemote.current = 0;
     setDragOver(null);
     const data = dragDataRef.current;
-    if (!data || data.side === targetSide || transferringRef.current) return;
+    if (!data) { setTransferStatus("Drop: no drag data"); return; }
+    if (data.side === targetSide) return; // same panel, ignore silently
+    if (transferringRef.current) { setTransferStatus("Transfer already in progress"); return; }
     dragDataRef.current = null;
 
     const files = data.files.filter((f) => !f.is_dir);
-    if (files.length === 0) return;
+    if (files.length === 0) { setTransferStatus("Only directories dragged — drag files to transfer"); return; }
+
+    const curLocalPath = localPathRef.current;
+    const curRemotePath = remotePathRef.current;
+    const curLocalSep = curLocalPath.includes("\\") ? "\\" : "/";
 
     transferringRef.current = true;
     setTransferring(true);
     const direction = targetSide === "local" ? "download" : "upload";
+    setTransferStatus(`${direction === "download" ? "Downloading" : "Uploading"} ${files.length} file(s) via drag & drop...`);
+
     const newTransfers: TransferItem[] = files.map((f) => ({
       id: crypto.randomUUID(),
       filename: f.name,
@@ -576,25 +632,28 @@ function SFTPExplorer({
 
         try {
           if (direction === "download") {
-            const localDest = `${localPath}${localSep}${f.name}`;
+            const localDest = `${curLocalPath}${curLocalSep}${f.name}`;
             await invoke("sftp_download", { sessionId, remotePath: f.path, localPath: localDest });
           } else {
-            const remoteDest = `${remotePath}/${f.name}`;
+            const remoteDest = `${curRemotePath}/${f.name}`;
             await invoke("sftp_upload", { sessionId, localPath: f.path, remotePath: remoteDest });
           }
           setTransfers((prev) => prev.map((x) => x.id === t.id ? { ...x, status: "done" } : x));
         } catch (e) {
-          setTransfers((prev) => prev.map((x) => x.id === t.id ? { ...x, status: "error", error: String(e) } : x));
+          const errMsg = String(e);
+          setTransfers((prev) => prev.map((x) => x.id === t.id ? { ...x, status: "error", error: errMsg } : x));
+          setTransferStatus(`Error: ${errMsg}`);
         }
       }
+    } catch (e) {
+      setTransferStatus(`Transfer failed: ${String(e)}`);
     } finally {
       transferringRef.current = false;
       setTransferring(false);
-      // Refresh the target panel
-      if (targetSide === "local") loadLocal(localPath);
-      else loadRemote(remotePath);
+      if (targetSide === "local") loadLocal(curLocalPath);
+      else loadRemote(curRemotePath);
     }
-  }, [localPath, localSep, remotePath, sessionId, getInvoke, loadLocal, loadRemote]);
+  };
 
   // Delete remote
   const handleDeleteRemote = async () => {
@@ -729,6 +788,23 @@ function SFTPExplorer({
           }}>
             {previewContent}
           </pre>
+        </div>
+      )}
+
+      {/* Status message */}
+      {transferStatus && (
+        <div
+          onClick={() => setTransferStatus(null)}
+          style={{
+            padding: "5px 8px", marginBottom: 4, fontSize: 10, borderRadius: "var(--radius-sm)",
+            background: transferStatus.startsWith("Error") || transferStatus.startsWith("Download failed") || transferStatus.startsWith("Upload failed") || transferStatus.startsWith("Transfer failed")
+              ? "rgba(248,81,73,0.15)" : "rgba(88,166,255,0.15)",
+            color: transferStatus.startsWith("Error") || transferStatus.startsWith("Download failed") || transferStatus.startsWith("Upload failed") || transferStatus.startsWith("Transfer failed")
+              ? "var(--accent-error)" : "var(--accent-primary)",
+            border: "1px solid currentColor", cursor: "pointer", flexShrink: 0,
+          }}
+        >
+          {transferStatus}
         </div>
       )}
 
