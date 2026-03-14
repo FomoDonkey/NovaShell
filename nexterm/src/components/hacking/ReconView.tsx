@@ -394,9 +394,12 @@ export function ReconView() {
               lineHeight: 1.4,
               color: "var(--accent-primary)",
               fontFamily: "'JetBrains Mono', monospace",
-              overflow: "auto",
-              maxHeight: 250,
+              overflowX: "auto",
+              overflowY: "auto",
+              maxHeight: 300,
               margin: 0,
+              whiteSpace: "pre-wrap",
+              wordBreak: "break-all",
             }}>
               {networkMap}
             </pre>

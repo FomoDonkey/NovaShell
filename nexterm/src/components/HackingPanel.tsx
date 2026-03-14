@@ -170,12 +170,13 @@ export function HackingPanel() {
           {/* Sub-tab content */}
           <div style={{
             flex: 1,
-            overflow: "hidden",
+            overflowY: "auto",
+            overflowX: "hidden",
             padding: "8px 16px 12px",
             display: "flex",
             flexDirection: "column",
             minHeight: 0,
-          }}>
+          }} className="hacking-log-container">
             {activeSubTab === "recon" && <ReconView />}
             {activeSubTab === "exploit" && <ExploitView />}
             {activeSubTab === "tools" && <ToolsView />}

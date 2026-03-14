@@ -302,9 +302,7 @@ export function HistoryView() {
             <span style={{
               color: "var(--text-primary)",
               flex: 1,
-              overflow: "hidden",
-              textOverflow: "ellipsis",
-              whiteSpace: "nowrap",
+              wordBreak: "break-word",
               fontFamily: "'JetBrains Mono', monospace",
             }}>
               {log.message}
