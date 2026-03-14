@@ -6,6 +6,7 @@ mod keychain_manager;
 mod log_manager;
 mod pty_manager;
 mod session_doc_manager;
+mod sftp_manager;
 mod ssh_manager;
 mod system_info;
 
@@ -17,6 +18,7 @@ use tauri::State;
 pub struct AppState {
     pub sessions: Mutex<HashMap<String, pty_manager::PtySession>>,
     pub ssh_sessions: Mutex<HashMap<String, ssh_manager::SshSession>>,
+    pub sftp_sessions: Mutex<HashMap<String, sftp_manager::SftpSession>>,
     pub system: Mutex<sysinfo::System>,
     pub cached_path_commands: Mutex<Option<Vec<String>>>,
     pub log_manager: Mutex<log_manager::LogManager>,
@@ -896,6 +898,166 @@ fn hacking_delete_session(filename: String) -> Result<(), String> {
     std::fs::remove_file(&filepath).map_err(|e| format!("Delete error: {}", e))
 }
 
+// ──────────── SFTP Commands ────────────
+
+#[tauri::command]
+async fn sftp_connect(
+    host: String,
+    port: u16,
+    username: String,
+    password: Option<String>,
+    private_key: Option<String>,
+    state: State<'_, AppState>,
+) -> Result<String, String> {
+    {
+        let sessions = state.sftp_sessions.lock()
+            .map_err(|e| format!("SFTP session lock error: {}", e))?;
+        if sessions.len() >= 10 {
+            return Err("Maximum number of SFTP sessions reached (10)".to_string());
+        }
+    }
+    let session_id = uuid::Uuid::new_v4().to_string();
+    let session = sftp_manager::SftpSession::new(
+        &host,
+        port,
+        &username,
+        password.as_deref(),
+        private_key.as_deref(),
+        &session_id,
+    )?;
+
+    state.sftp_sessions.lock()
+        .map_err(|e| format!("SFTP session lock error: {}", e))?
+        .insert(session_id.clone(), session);
+
+    Ok(session_id)
+}
+
+#[tauri::command]
+fn sftp_disconnect(
+    session_id: String,
+    state: State<'_, AppState>,
+) -> Result<(), String> {
+    let mut sessions = state.sftp_sessions.lock()
+        .map_err(|e| format!("SFTP session lock error: {}", e))?;
+    if sessions.remove(&session_id).is_some() {
+        Ok(())
+    } else {
+        Err(format!("SFTP session '{}' not found", session_id))
+    }
+}
+
+#[tauri::command]
+fn sftp_list_dir(
+    session_id: String,
+    path: String,
+    state: State<'_, AppState>,
+) -> Result<Vec<sftp_manager::RemoteFileEntry>, String> {
+    let sessions = state.sftp_sessions.lock()
+        .map_err(|e| format!("SFTP session lock error: {}", e))?;
+    let session = sessions.get(&session_id)
+        .ok_or_else(|| format!("SFTP session '{}' not found", session_id))?;
+    session.list_dir(&path)
+}
+
+#[tauri::command]
+fn sftp_download(
+    session_id: String,
+    remote_path: String,
+    local_path: String,
+    state: State<'_, AppState>,
+) -> Result<u64, String> {
+    let sessions = state.sftp_sessions.lock()
+        .map_err(|e| format!("SFTP session lock error: {}", e))?;
+    let session = sessions.get(&session_id)
+        .ok_or_else(|| format!("SFTP session '{}' not found", session_id))?;
+    session.download_file(&remote_path, &local_path)
+}
+
+#[tauri::command]
+fn sftp_upload(
+    session_id: String,
+    local_path: String,
+    remote_path: String,
+    state: State<'_, AppState>,
+) -> Result<u64, String> {
+    let sessions = state.sftp_sessions.lock()
+        .map_err(|e| format!("SFTP session lock error: {}", e))?;
+    let session = sessions.get(&session_id)
+        .ok_or_else(|| format!("SFTP session '{}' not found", session_id))?;
+    session.upload_file(&local_path, &remote_path)
+}
+
+#[tauri::command]
+fn sftp_mkdir(
+    session_id: String,
+    path: String,
+    state: State<'_, AppState>,
+) -> Result<(), String> {
+    let sessions = state.sftp_sessions.lock()
+        .map_err(|e| format!("SFTP session lock error: {}", e))?;
+    let session = sessions.get(&session_id)
+        .ok_or_else(|| format!("SFTP session '{}' not found", session_id))?;
+    session.mkdir(&path)
+}
+
+#[tauri::command]
+fn sftp_delete(
+    session_id: String,
+    path: String,
+    is_dir: bool,
+    state: State<'_, AppState>,
+) -> Result<(), String> {
+    let sessions = state.sftp_sessions.lock()
+        .map_err(|e| format!("SFTP session lock error: {}", e))?;
+    let session = sessions.get(&session_id)
+        .ok_or_else(|| format!("SFTP session '{}' not found", session_id))?;
+    if is_dir {
+        session.delete_dir(&path)
+    } else {
+        session.delete_file(&path)
+    }
+}
+
+#[tauri::command]
+fn sftp_rename(
+    session_id: String,
+    old_path: String,
+    new_path: String,
+    state: State<'_, AppState>,
+) -> Result<(), String> {
+    let sessions = state.sftp_sessions.lock()
+        .map_err(|e| format!("SFTP session lock error: {}", e))?;
+    let session = sessions.get(&session_id)
+        .ok_or_else(|| format!("SFTP session '{}' not found", session_id))?;
+    session.rename(&old_path, &new_path)
+}
+
+#[tauri::command]
+fn sftp_home_dir(
+    session_id: String,
+    state: State<'_, AppState>,
+) -> Result<String, String> {
+    let sessions = state.sftp_sessions.lock()
+        .map_err(|e| format!("SFTP session lock error: {}", e))?;
+    let session = sessions.get(&session_id)
+        .ok_or_else(|| format!("SFTP session '{}' not found", session_id))?;
+    session.home_dir()
+}
+
+#[tauri::command]
+fn sftp_read_text(
+    session_id: String,
+    path: String,
+    state: State<'_, AppState>,
+) -> Result<String, String> {
+    let sessions = state.sftp_sessions.lock()
+        .map_err(|e| format!("SFTP session lock error: {}", e))?;
+    let session = sessions.get(&session_id)
+        .ok_or_else(|| format!("SFTP session '{}' not found", session_id))?;
+    session.read_text_file(&path, 1_048_576) // 1MB max
+}
+
 fn chrono_timestamp() -> String {
     let now = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
@@ -913,6 +1075,7 @@ fn main() {
         .manage(AppState {
             sessions: Mutex::new(HashMap::new()),
             ssh_sessions: Mutex::new(HashMap::new()),
+            sftp_sessions: Mutex::new(HashMap::new()),
             system: Mutex::new(sysinfo::System::new_all()),
             cached_path_commands: Mutex::new(None),
             log_manager: Mutex::new(log_manager::LogManager::new()),
@@ -969,6 +1132,16 @@ fn main() {
             hacking_load_session,
             hacking_list_sessions,
             hacking_delete_session,
+            sftp_connect,
+            sftp_disconnect,
+            sftp_list_dir,
+            sftp_download,
+            sftp_upload,
+            sftp_mkdir,
+            sftp_delete,
+            sftp_rename,
+            sftp_home_dir,
+            sftp_read_text,
         ])
         .run(tauri::generate_context!())
         .expect("error while running NovaShell");

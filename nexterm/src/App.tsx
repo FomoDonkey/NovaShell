@@ -28,11 +28,16 @@ function App() {
     document.documentElement.setAttribute("data-theme", theme);
   }, [theme]);
 
+  const sidebarWrapperRef = useRef<HTMLDivElement>(null);
+
   const startResize = useCallback((e: React.MouseEvent) => {
     e.preventDefault();
     isResizing.current = true;
     const startX = e.clientX;
     const startWidth = sidebarWidth;
+
+    // Disable CSS transition during drag for instant response
+    sidebarWrapperRef.current?.classList.add("sidebar-resizing");
 
     const onMouseMove = (ev: MouseEvent) => {
       if (!isResizing.current) return;
@@ -44,6 +49,7 @@ function App() {
 
     const onMouseUp = () => {
       isResizing.current = false;
+      sidebarWrapperRef.current?.classList.remove("sidebar-resizing");
       document.removeEventListener("mousemove", onMouseMove);
       document.removeEventListener("mouseup", onMouseUp);
       document.body.style.cursor = "";
@@ -65,6 +71,7 @@ function App() {
           <MemoizedTerminalPanel />
         </div>
         <div
+          ref={sidebarWrapperRef}
           className={`sidebar-wrapper ${sidebarOpen ? "sidebar-open" : "sidebar-closed"}`}
           style={{ width: sidebarOpen ? sidebarWidth : 0, position: "relative" }}
         >

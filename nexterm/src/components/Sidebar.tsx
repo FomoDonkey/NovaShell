@@ -29,6 +29,7 @@ import {
   Edit3,
   X,
   Shield,
+  FolderSync,
 } from "lucide-react";
 import { useAppStore } from "../store/appStore";
 import type { SidebarTab } from "../store/appStore";
@@ -38,6 +39,7 @@ import { AIPanel } from "./AIPanel";
 import { FileExplorer } from "./FileExplorer";
 import { SessionDocPanel } from "./SessionDocPanel";
 import { HackingPanel } from "./HackingPanel";
+import { SFTPPanel } from "./SFTPPanel";
 
 const sidebarTabs: { id: SidebarTab; icon: typeof History; label: string }[] = [
   { id: "history", icon: History, label: "History" },
@@ -46,6 +48,7 @@ const sidebarTabs: { id: SidebarTab; icon: typeof History; label: string }[] = [
   { id: "plugins", icon: Puzzle, label: "Plugins" },
   { id: "stats", icon: BarChart3, label: "Stats" },
   { id: "ssh", icon: Monitor, label: "SSH" },
+  { id: "sftp", icon: FolderSync, label: "SFTP Transfer" },
   { id: "debug", icon: Bug, label: "Debug" },
   { id: "ai", icon: Sparkles, label: "AI Assistant" },
   { id: "docs", icon: FileText, label: "Session Docs" },
@@ -83,6 +86,7 @@ export function Sidebar() {
         {sidebarTab === "plugins" && <PluginsPanel />}
         {sidebarTab === "stats" && <StatsPanel />}
         {sidebarTab === "ssh" && <SSHPanel />}
+        {sidebarTab === "sftp" && <SFTPPanel />}
         {sidebarTab === "debug" && <DebugPanel />}
         {sidebarTab === "ai" && <AIPanel />}
         {sidebarTab === "docs" && <SessionDocPanel />}

@@ -222,6 +222,9 @@ body {
   transition: width 0.25s ease-in-out, opacity 0.25s ease-in-out;
   opacity: 1;
 }
+.sidebar-wrapper.sidebar-resizing {
+  transition: opacity 0.25s ease-in-out;
+}
 .sidebar-wrapper.sidebar-closed {
   opacity: 0;
   border-left: none;

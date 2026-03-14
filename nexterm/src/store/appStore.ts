@@ -1,7 +1,7 @@
 import { create } from "zustand";
 
 export type ThemeName = "dark" | "light" | "cyberpunk" | "retro" | "hacking";
-export type SidebarTab = "history" | "snippets" | "preview" | "plugins" | "stats" | "ssh" | "debug" | "ai" | "docs" | "hacking";
+export type SidebarTab = "history" | "snippets" | "preview" | "plugins" | "stats" | "ssh" | "sftp" | "debug" | "ai" | "docs" | "hacking";
 
 // === Hacking Mode Types ===
 export type HackingLogLevel = "recon" | "exploit" | "alert" | "info" | "success" | "danger";
