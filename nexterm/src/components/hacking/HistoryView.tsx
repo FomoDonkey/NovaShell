@@ -81,7 +81,7 @@ export function HistoryView() {
   };
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 8, flex: 1, minHeight: 0 }}>
+    <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
       {/* Header */}
       <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
         <Clock size={12} style={{ color: "var(--text-secondary)" }} />
@@ -273,7 +273,7 @@ export function HistoryView() {
         )}
       </div>
 
-      <div style={{ flex: 1, overflowY: "auto", minHeight: 0 }} className="hacking-log-container">
+      <div>
         {hackingLogs.map((log) => (
           <div
             key={log.id}

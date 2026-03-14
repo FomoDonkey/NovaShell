@@ -142,7 +142,7 @@ export function AiSecView() {
   ];
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 8, flex: 1, minHeight: 0 }}>
+    <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
       {/* Header */}
       <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
         <Brain size={12} style={{ color: "var(--accent-purple)" }} />
@@ -229,7 +229,7 @@ export function AiSecView() {
       )}
 
       {/* Chat messages */}
-      <div style={{ flex: 1, overflowY: "auto", minHeight: 0, display: "flex", flexDirection: "column", gap: 6 }} className="hacking-log-container">
+      <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
         {chat.map((entry) => (
           <div
             key={entry.id}

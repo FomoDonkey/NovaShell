@@ -307,7 +307,7 @@ function RevShellTool() {
           />
         </div>
       </div>
-      <div style={{ display: "flex", flexDirection: "column", gap: 6, overflowY: "auto" }}>
+      <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
         {REVSHELL_TEMPLATES.map((t, i) => {
           const cmd = t.cmd(ip, port);
           return (
@@ -351,7 +351,7 @@ export function ToolsView() {
   const [activeTab, setActiveTab] = useState<ToolTab>("hash");
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 8, flex: 1, minHeight: 0 }}>
+    <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
       {/* Tool tabs */}
       <div style={{ display: "flex", gap: 4 }}>
         {toolTabs.map((t) => (
@@ -382,7 +382,7 @@ export function ToolsView() {
       </div>
 
       {/* Tool content */}
-      <div style={{ flex: 1, overflowY: "auto", minHeight: 0 }} className="hacking-log-container">
+      <div>
         {activeTab === "hash" && <HashTool />}
         {activeTab === "encode" && <EncodeTool />}
         {activeTab === "revshell" && <RevShellTool />}

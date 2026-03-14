@@ -193,7 +193,7 @@ export function ReconView() {
   };
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 8, flex: 1, minHeight: 0 }}>
+    <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
       {/* Scan Controls */}
       <div style={{
         padding: "8px 10px",
@@ -437,7 +437,7 @@ export function ReconView() {
             </span>
           </div>
           {showPorts && (
-            <div style={{ overflowY: "auto", flex: 1 }} className="hacking-log-container">
+            <div>
               {/* Table header */}
               <div style={{
                 display: "flex",

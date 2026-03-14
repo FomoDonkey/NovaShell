@@ -26,7 +26,7 @@ export function AlertsView() {
   const warningCount = alerts.filter((a) => a.severity === "warning").length;
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 8, flex: 1, minHeight: 0 }}>
+    <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
       {/* Header */}
       <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
         <AlertTriangle size={12} style={{ color: "#ffaf00" }} />
@@ -96,7 +96,7 @@ export function AlertsView() {
       )}
 
       {/* Alert List */}
-      <div style={{ flex: 1, overflowY: "auto", minHeight: 0, display: "flex", flexDirection: "column", gap: 4 }} className="hacking-log-container">
+      <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
         {alerts.map((alert) => (
           <div
             key={alert.id}
