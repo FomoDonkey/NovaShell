@@ -19,6 +19,7 @@ pub struct AppState {
     pub sessions: Mutex<HashMap<String, pty_manager::PtySession>>,
     pub ssh_sessions: Mutex<HashMap<String, ssh_manager::SshSession>>,
     pub sftp_sessions: Mutex<HashMap<String, std::sync::Arc<sftp_manager::SftpSession>>>,
+    pub log_streams: Mutex<HashMap<String, ssh_manager::LogStream>>,
     pub system: Mutex<sysinfo::System>,
     pub cached_path_commands: Mutex<Option<Vec<String>>>,
     pub log_manager: Mutex<log_manager::LogManager>,
@@ -1463,6 +1464,53 @@ fn base64_decode(input: &str) -> Result<Vec<u8>, String> {
     Ok(buf)
 }
 
+// ──────────── Log Streams ────────────
+
+#[tauri::command]
+async fn start_log_stream(
+    host: String,
+    port: u16,
+    username: String,
+    password: Option<String>,
+    private_key: Option<String>,
+    command: String,
+    state: State<'_, AppState>,
+    app_handle: tauri::AppHandle,
+) -> Result<String, String> {
+    let stream_id = uuid::Uuid::new_v4().to_string();
+    let stream = ssh_manager::LogStream::new(
+        &host, port, &username,
+        password.as_deref(), private_key.as_deref(),
+        &command, &stream_id, app_handle,
+    )?;
+    state.log_streams.lock()
+        .map_err(|e| format!("Lock error: {}", e))?
+        .insert(stream_id.clone(), stream);
+    Ok(stream_id)
+}
+
+#[tauri::command]
+fn stop_log_stream(
+    stream_id: String,
+    state: State<'_, AppState>,
+) -> Result<(), String> {
+    state.log_streams.lock()
+        .map_err(|e| format!("Lock error: {}", e))?
+        .remove(&stream_id); // Drop triggers cleanup
+    Ok(())
+}
+
+#[tauri::command]
+fn tail_local_file(path: String, lines: u32) -> Result<String, String> {
+    let content = std::fs::read_to_string(&path)
+        .map_err(|e| format!("Read error: {}", e))?;
+    let all_lines: Vec<&str> = content.lines().collect();
+    let start = if all_lines.len() > lines as usize { all_lines.len() - lines as usize } else { 0 };
+    Ok(all_lines[start..].join("\n"))
+}
+
+// ──────────── File Write ────────────
+
 #[tauri::command]
 fn write_file(path: String, content: String) -> Result<(), String> {
     std::fs::write(&path, &content).map_err(|e| format!("Write error: {}", e))
@@ -1502,6 +1550,7 @@ fn main() {
             sessions: Mutex::new(HashMap::new()),
             ssh_sessions: Mutex::new(HashMap::new()),
             sftp_sessions: Mutex::new(HashMap::new()),
+            log_streams: Mutex::new(HashMap::new()),
             system: Mutex::new(sysinfo::System::new_all()),
             cached_path_commands: Mutex::new(None),
             log_manager: Mutex::new(log_manager::LogManager::new()),
@@ -1581,6 +1630,9 @@ fn main() {
             sftp_read_text,
             sftp_write_text,
             write_file,
+            start_log_stream,
+            stop_log_stream,
+            tail_local_file,
         ])
         .run(tauri::generate_context!())
         .expect("error while running NovaShell");

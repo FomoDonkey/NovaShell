@@ -239,6 +239,101 @@ impl SshSession {
     }
 }
 
+// ──────────── Log Stream (tail -f over SSH) ────────────
+
+pub struct LogStream {
+    running: Arc<Mutex<bool>>,
+    _reader_thread: Option<JoinHandle<()>>,
+}
+
+impl Drop for LogStream {
+    fn drop(&mut self) {
+        if let Ok(mut r) = self.running.lock() { *r = false; }
+        if let Some(h) = self._reader_thread.take() { let _ = h.join(); }
+    }
+}
+
+impl LogStream {
+    pub fn new(
+        host: &str,
+        port: u16,
+        username: &str,
+        password: Option<&str>,
+        private_key: Option<&str>,
+        command: &str,
+        stream_id: &str,
+        app_handle: tauri::AppHandle,
+    ) -> Result<Self, String> {
+        let addr = format!("{}:{}", host, port);
+
+        use std::net::ToSocketAddrs;
+        let socket_addr = addr
+            .to_socket_addrs()
+            .map_err(|e| format!("Cannot resolve {}: {}", addr, e))?
+            .next()
+            .ok_or_else(|| format!("Could not resolve host: {}", host))?;
+
+        let tcp = TcpStream::connect_timeout(&socket_addr, std::time::Duration::from_secs(10))
+            .map_err(|e| format!("TCP failed: {}", e))?;
+        tcp.set_nodelay(true).ok();
+
+        let mut session = Session::new().map_err(|e| format!("Session error: {}", e))?;
+        session.set_tcp_stream(tcp);
+        session.set_timeout(15000);
+        session.handshake().map_err(|e| format!("Handshake failed: {}", e))?;
+        session.set_keepalive(true, 30);
+
+        // Authenticate
+        if let Some(key_content) = private_key {
+            let temp_dir = std::env::temp_dir();
+            let key_path = temp_dir.join(format!("novashell_logstream_{}", stream_id));
+            std::fs::write(&key_path, key_content).map_err(|e| format!("Key write error: {}", e))?;
+            let result = session.userauth_pubkey_file(username, None, &key_path, password);
+            let _ = std::fs::remove_file(&key_path);
+            result.map_err(|e| format!("Key auth failed: {}", e))?;
+        } else if let Some(pass) = password {
+            session.userauth_password(username, pass).map_err(|e| format!("Auth failed: {}", e))?;
+        } else {
+            return Err("No auth method".to_string());
+        }
+
+        if !session.authenticated() { return Err("Authentication failed".to_string()); }
+
+        // Execute the tail -f command (no PTY needed)
+        let mut channel = session.channel_session().map_err(|e| format!("Channel error: {}", e))?;
+        channel.exec(command).map_err(|e| format!("Exec error: {}", e))?;
+
+        session.set_blocking(true);
+        session.set_timeout(500); // 500ms read timeout
+
+        let running = Arc::new(Mutex::new(true));
+        let running_clone = Arc::clone(&running);
+        let data_event = format!("log-stream-data-{}", stream_id);
+
+        let reader_thread = std::thread::spawn(move || {
+            let mut buf = [0u8; 4096];
+            loop {
+                if let Ok(r) = running_clone.lock() { if !*r { break; } } else { break; }
+                match channel.read(&mut buf) {
+                    Ok(0) => break,
+                    Ok(n) => {
+                        let data = String::from_utf8_lossy(&buf[..n]).to_string();
+                        let _ = app_handle.emit(&data_event, data);
+                    }
+                    Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock
+                        || e.kind() == std::io::ErrorKind::TimedOut => {
+                        std::thread::sleep(std::time::Duration::from_millis(50));
+                    }
+                    Err(_) => break,
+                }
+            }
+            let _ = session.disconnect(None, "Log stream closed", None);
+        });
+
+        Ok(LogStream { running, _reader_thread: Some(reader_thread) })
+    }
+}
+
 /// Test SSH connection without keeping it open
 pub fn test_ssh_connection(
     host: &str,
