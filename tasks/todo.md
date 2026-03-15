@@ -62,6 +62,14 @@
 - [x] Debug Copilot: AI Layer 2 — Ollama integration for unmatched errors
 - [x] Debug Copilot: TypeScript compilation verified
 
+## Completed (recent)
+- [x] Editor: Open File / Open Folder buttons in empty state and header
+- [x] Editor: File browser overlay for navigating and selecting files/folders
+- [x] Editor: Folder tree sidebar panel when a folder is opened
+- [x] Editor: Active file highlighting in folder tree
+- [x] Editor: Toggle folder panel visibility button in header
+- [x] Editor: Search/filter in both file browser and folder tree
+
 ## Pending
 - [ ] Test Debug Copilot AI analysis with live Ollama
 - [ ] Test full SSH flow end-to-end

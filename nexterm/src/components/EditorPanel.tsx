@@ -3,6 +3,7 @@ import {
   FileText, Save, X, AlertTriangle, Loader2, Sparkles, Check,
   Play, Square, RotateCcw, RefreshCw, Terminal, Eye, Settings,
   Zap, ScrollText, ChevronRight, ChevronDown, Package, FileCode,
+  Folder, FolderOpen, File, Search, FolderOpenDot, ArrowLeft, Home, PanelLeftClose, PanelLeftOpen,
 } from "lucide-react";
 import { EditorView, keymap, lineNumbers, highlightActiveLineGutter, highlightActiveLine, drawSelection } from "@codemirror/view";
 import { EditorState, Compartment } from "@codemirror/state";
@@ -42,6 +43,45 @@ interface OpenFile {
   sshPassword?: string | null;
   sshPrivateKey?: string | null;
   modified: boolean;
+}
+
+// ── File Browser Types ──
+
+interface FileEntry {
+  name: string;
+  path: string;
+  is_dir: boolean;
+  size: number;
+  extension: string;
+}
+
+interface TreeState {
+  expanded: Set<string>;
+  children: Map<string, FileEntry[]>;
+  loading: Set<string>;
+}
+
+const EXT_COLORS: Record<string, string> = {
+  js: "#f7df1e", ts: "#3178c6", tsx: "#3178c6", jsx: "#61dafb",
+  json: "#a8b1ff", md: "#519aba", css: "#563d7c", html: "#e34f26",
+  py: "#3572A5", rs: "#dea584", go: "#00ADD8", java: "#b07219",
+  yaml: "#cb171e", yml: "#cb171e", toml: "#9c4221", csv: "#237346",
+  sh: "#89e051", bash: "#89e051", ps1: "#012456", bat: "#c1f12e",
+  txt: "var(--text-muted)", log: "var(--accent-warning)",
+  png: "#a259ff", jpg: "#a259ff", svg: "#ff9a00", gif: "#a259ff",
+  exe: "var(--accent-error)", dll: "var(--accent-error)",
+  lock: "var(--text-muted)", gitignore: "#f05032",
+};
+
+function getExtColor(ext: string): string {
+  return EXT_COLORS[ext.toLowerCase()] || "var(--text-secondary)";
+}
+
+function formatSize(bytes: number): string {
+  if (bytes === 0) return "";
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
 // ── Infra Detection ──
@@ -228,11 +268,156 @@ export function EditorPanel() {
   const [logStreamId, setLogStreamId] = useState<string | null>(null);
   const logContainerRef = useRef<HTMLDivElement>(null);
 
+  // File browser state
+  const [browserOpen, setBrowserOpen] = useState(false);
+  const [browserPath, setBrowserPath] = useState("");
+  const [browserFiles, setBrowserFiles] = useState<FileEntry[]>([]);
+  const [browserLoading, setBrowserLoading] = useState(false);
+  const [browserFilter, setBrowserFilter] = useState("");
+  const [browserMode, setBrowserMode] = useState<"file" | "folder">("file");
+
+  // Folder tree state (shown when a folder is opened)
+  const [folderRoot, setFolderRoot] = useState<string | null>(null);
+  const [folderFiles, setFolderFiles] = useState<FileEntry[]>([]);
+  const [folderTree, setFolderTree] = useState<TreeState>({ expanded: new Set(), children: new Map(), loading: new Set() });
+  const [folderFilter, setFolderFilter] = useState("");
+  const [folderTreeVisible, setFolderTreeVisible] = useState(true);
+
   const editorRef = useRef<HTMLDivElement>(null);
   const viewRef = useRef<EditorView | null>(null);
   const langCompartment = useRef(new Compartment());
   const debounceTimer = useRef<ReturnType<typeof setTimeout>>();
   const contentRef = useRef("");
+
+  // ── File Browser Functions ──
+
+  const loadBrowserDir = useCallback(async (path?: string) => {
+    setBrowserLoading(true);
+    try {
+      const invoke = await getInvoke();
+      const entries = await invoke<FileEntry[]>("list_directory", { path: path || null });
+      setBrowserFiles(entries);
+      if (path) {
+        setBrowserPath(path);
+      } else if (entries.length > 0) {
+        const firstPath = entries[0].path.replace(/\\/g, "/");
+        const parent = firstPath.substring(0, firstPath.lastIndexOf("/"));
+        setBrowserPath(parent);
+      }
+    } catch {
+      setBrowserFiles([]);
+    }
+    setBrowserLoading(false);
+  }, []);
+
+  const openFileBrowser = useCallback((mode: "file" | "folder") => {
+    setBrowserMode(mode);
+    setBrowserOpen(true);
+    setBrowserFilter("");
+    loadBrowserDir();
+  }, [loadBrowserDir]);
+
+  const selectBrowserFile = useCallback(async (entry: FileEntry) => {
+    if (entry.is_dir) {
+      if (browserMode === "folder") {
+        // Open this folder as the project folder
+        setFolderRoot(entry.path);
+        setFolderTreeVisible(true);
+        setBrowserOpen(false);
+        // Load folder contents
+        try {
+          const invoke = await getInvoke();
+          const entries = await invoke<FileEntry[]>("list_directory", { path: entry.path });
+          setFolderFiles(entries);
+          setFolderTree({ expanded: new Set(), children: new Map(), loading: new Set() });
+          setFolderFilter("");
+        } catch {}
+      } else {
+        loadBrowserDir(entry.path);
+      }
+    } else {
+      // Open file in editor
+      try {
+        const invoke = await getInvoke();
+        const content = await invoke<string>("read_file_preview", { path: entry.path });
+        setFile({ path: entry.path, name: entry.name, content, source: "local", modified: false });
+        contentRef.current = content;
+        setAiAnalysis(null);
+        setShowAnalysis(false);
+        setInfra(detectInfra(entry.name, content));
+        stopLiveLogs();
+        setBrowserOpen(false);
+      } catch {}
+    }
+  }, [browserMode, loadBrowserDir]);
+
+  const browserGoUp = useCallback(() => {
+    const parent = browserPath.replace(/[/\\][^/\\]*$/, "");
+    if (parent && parent !== browserPath) loadBrowserDir(parent);
+  }, [browserPath, loadBrowserDir]);
+
+  // ── Folder Tree Functions ──
+
+  const loadFolderChildren = useCallback(async (dirPath: string) => {
+    setFolderTree((prev) => ({
+      ...prev,
+      loading: new Set(prev.loading).add(dirPath),
+    }));
+    try {
+      const invoke = await getInvoke();
+      const entries = await invoke<FileEntry[]>("list_directory", { path: dirPath });
+      setFolderTree((prev) => {
+        const newChildren = new Map(prev.children);
+        newChildren.set(dirPath, entries);
+        const newExpanded = new Set(prev.expanded);
+        newExpanded.add(dirPath);
+        const newLoading = new Set(prev.loading);
+        newLoading.delete(dirPath);
+        return { expanded: newExpanded, children: newChildren, loading: newLoading };
+      });
+    } catch {
+      setFolderTree((prev) => {
+        const newLoading = new Set(prev.loading);
+        newLoading.delete(dirPath);
+        return { ...prev, loading: newLoading };
+      });
+    }
+  }, []);
+
+  const handleFolderDirClick = useCallback((dirPath: string) => {
+    setFolderTree((prev) => {
+      if (prev.expanded.has(dirPath)) {
+        const newExpanded = new Set(prev.expanded);
+        newExpanded.delete(dirPath);
+        return { ...prev, expanded: newExpanded };
+      }
+      if (prev.children.has(dirPath)) {
+        const newExpanded = new Set(prev.expanded);
+        newExpanded.add(dirPath);
+        return { ...prev, expanded: newExpanded };
+      }
+      return prev;
+    });
+    if (!folderTree.expanded.has(dirPath) && !folderTree.children.has(dirPath)) {
+      loadFolderChildren(dirPath);
+    }
+  }, [folderTree, loadFolderChildren]);
+
+  const handleFolderFileClick = useCallback(async (entry: FileEntry) => {
+    try {
+      const invoke = await getInvoke();
+      const content = await invoke<string>("read_file_preview", { path: entry.path });
+      setFile({ path: entry.path, name: entry.name, content, source: "local", modified: false });
+      contentRef.current = content;
+      setAiAnalysis(null);
+      setShowAnalysis(false);
+      setInfra(detectInfra(entry.name, content));
+      stopLiveLogs();
+    } catch {}
+  }, []);
+
+  const filterEntries = useCallback((files: FileEntry[], filter: string) =>
+    filter ? files.filter((f) => f.name.toLowerCase().includes(filter.toLowerCase())) : files, []);
 
   // Open file from event
   useEffect(() => {
@@ -427,20 +612,184 @@ export function EditorPanel() {
     setLiveLogLines([]);
   };
 
+  // ── File Browser Modal ──
+  const renderBrowser = () => {
+    if (!browserOpen) return null;
+    const pathParts = browserPath ? browserPath.replace(/\\/g, "/").split("/").filter(Boolean) : [];
+    const filtered = browserFilter ? browserFiles.filter((f) => f.name.toLowerCase().includes(browserFilter.toLowerCase())) : browserFiles;
+    return (
+      <div style={{ position: "absolute", inset: 0, zIndex: 50, background: "var(--bg-primary)", display: "flex", flexDirection: "column", overflow: "hidden" }}>
+        {/* Browser header */}
+        <div style={{ display: "flex", alignItems: "center", gap: 6, padding: "6px 8px", background: "var(--bg-tertiary)", borderBottom: "1px solid var(--border-subtle)", flexShrink: 0 }}>
+          <FolderOpenDot size={13} style={{ color: "var(--accent-primary)", flexShrink: 0 }} />
+          <span style={{ fontSize: 11, fontWeight: 600, color: "var(--text-primary)", flex: 1 }}>
+            {browserMode === "folder" ? "Open Folder" : "Open File"}
+          </span>
+          <button onClick={() => setBrowserOpen(false)} style={{ ...btnS, background: "none", color: "var(--text-muted)", padding: "2px" }}><X size={11} /></button>
+        </div>
+        {/* Navigation */}
+        <div style={{ display: "flex", alignItems: "center", gap: 4, padding: "4px 8px", borderBottom: "1px solid var(--border-subtle)", flexShrink: 0 }}>
+          <button onClick={() => loadBrowserDir()} title="Home" style={{ ...btnS, background: "none", color: "var(--text-muted)", padding: "2px" }}><Home size={12} /></button>
+          <button onClick={browserGoUp} title="Up" style={{ ...btnS, background: "none", color: "var(--text-muted)", padding: "2px" }}><ArrowLeft size={12} /></button>
+          <div style={{ flex: 1, fontSize: 10, color: "var(--text-secondary)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+            {pathParts.length > 3 ? `.../${pathParts.slice(-2).join("/")}` : pathParts.join("/")}
+          </div>
+          {browserMode === "folder" && browserPath && (
+            <button onClick={() => selectBrowserFile({ name: browserPath.split(/[/\\]/).pop() || "folder", path: browserPath, is_dir: true, size: 0, extension: "" })}
+              style={{ ...btnS, padding: "2px 8px", background: "var(--accent-primary)", color: "white", fontSize: 10 }}>
+              Open this folder
+            </button>
+          )}
+        </div>
+        {/* Search */}
+        <div style={{ padding: "4px 8px", flexShrink: 0 }}>
+          <div style={{ position: "relative" }}>
+            <Search size={11} style={{ position: "absolute", left: 6, top: 6, color: "var(--text-muted)" }} />
+            <input type="text" value={browserFilter} onChange={(e) => setBrowserFilter(e.target.value)} placeholder="Filter..."
+              style={{ width: "100%", padding: "4px 24px 4px 24px", background: "var(--bg-tertiary)", border: "1px solid var(--border-subtle)", borderRadius: "var(--radius-sm)", color: "var(--text-primary)", fontSize: 10, outline: "none" }} />
+            {browserFilter && <button onClick={() => setBrowserFilter("")} style={{ position: "absolute", right: 4, top: 4, background: "none", border: "none", color: "var(--text-muted)", cursor: "pointer", display: "flex", padding: 1 }}><X size={10} /></button>}
+          </div>
+        </div>
+        {/* File list */}
+        <div style={{ flex: 1, overflowY: "auto", padding: "2px 0" }}>
+          {browserLoading ? (
+            <div style={{ textAlign: "center", color: "var(--text-muted)", padding: 20, fontSize: 11 }}>Loading...</div>
+          ) : filtered.length === 0 ? (
+            <div style={{ textAlign: "center", color: "var(--text-muted)", padding: 20, fontSize: 11 }}>Empty</div>
+          ) : (
+            filtered.map((entry) => (
+              <div key={entry.path} onClick={() => selectBrowserFile(entry)}
+                style={{ display: "flex", alignItems: "center", gap: 4, padding: "4px 10px", cursor: "pointer", fontSize: 11, color: "var(--text-primary)", transition: "background 0.1s" }}
+                onMouseOver={(e) => (e.currentTarget.style.background = "var(--bg-hover)")}
+                onMouseOut={(e) => (e.currentTarget.style.background = "transparent")}>
+                {entry.is_dir ? <Folder size={13} style={{ color: "var(--accent-primary)", flexShrink: 0 }} /> : <File size={13} style={{ color: getExtColor(entry.extension), flexShrink: 0 }} />}
+                <span style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{entry.name}</span>
+                {!entry.is_dir && <span style={{ fontSize: 9, color: "var(--text-muted)", flexShrink: 0 }}>{formatSize(entry.size)}</span>}
+              </div>
+            ))
+          )}
+        </div>
+      </div>
+    );
+  };
+
+  // ── Folder Tree Renderer ──
+  const renderFolderTreeItem = (entry: FileEntry, depth: number): React.ReactNode => {
+    const isExpanded = folderTree.expanded.has(entry.path);
+    const isLoading = folderTree.loading.has(entry.path);
+    const children = folderTree.children.get(entry.path);
+    const paddingLeft = 8 + depth * 14;
+    const isActive = file?.path === entry.path;
+
+    if (entry.is_dir) {
+      return (
+        <div key={entry.path}>
+          <div onClick={() => handleFolderDirClick(entry.path)}
+            style={{ display: "flex", alignItems: "center", gap: 3, padding: "2px 4px", paddingLeft, cursor: "pointer", fontSize: 11, color: "var(--text-primary)", transition: "background 0.1s" }}
+            onMouseOver={(e) => (e.currentTarget.style.background = "var(--bg-hover)")}
+            onMouseOut={(e) => (e.currentTarget.style.background = "transparent")}>
+            {isLoading ? <RefreshCw size={10} style={{ color: "var(--text-muted)", animation: "spin 1s linear infinite", flexShrink: 0 }} />
+              : isExpanded ? <ChevronDown size={10} style={{ color: "var(--text-muted)", flexShrink: 0 }} />
+              : <ChevronRight size={10} style={{ color: "var(--text-muted)", flexShrink: 0 }} />}
+            {isExpanded ? <FolderOpen size={12} style={{ color: "var(--accent-primary)", flexShrink: 0 }} /> : <Folder size={12} style={{ color: "var(--accent-primary)", flexShrink: 0 }} />}
+            <span style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontWeight: 500 }}>{entry.name}</span>
+          </div>
+          {isExpanded && children && filterEntries(children, folderFilter).map((child) => renderFolderTreeItem(child, depth + 1))}
+        </div>
+      );
+    }
+
+    return (
+      <div key={entry.path} onClick={() => handleFolderFileClick(entry)}
+        style={{ display: "flex", alignItems: "center", gap: 3, padding: "2px 4px", paddingLeft: paddingLeft + 14, cursor: "pointer", fontSize: 11,
+          color: isActive ? "var(--accent-primary)" : "var(--text-secondary)", background: isActive ? "rgba(88,166,255,0.08)" : "transparent", transition: "background 0.1s" }}
+        onMouseOver={(e) => { if (!isActive) e.currentTarget.style.background = "var(--bg-hover)"; }}
+        onMouseOut={(e) => { if (!isActive) e.currentTarget.style.background = "transparent"; }}>
+        <File size={11} style={{ color: getExtColor(entry.extension), flexShrink: 0 }} />
+        <span style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{entry.name}</span>
+      </div>
+    );
+  };
+
+  const renderFolderPanel = () => {
+    if (!folderRoot || !folderTreeVisible) return null;
+    const folderName = folderRoot.replace(/\\/g, "/").split("/").pop() || folderRoot;
+    const filtered = filterEntries(folderFiles, folderFilter);
+    return (
+      <div style={{ width: 180, minWidth: 130, maxWidth: 220, borderRight: "1px solid var(--border-subtle)", display: "flex", flexDirection: "column", background: "var(--bg-secondary)", flexShrink: 0 }}>
+        {/* Folder header */}
+        <div style={{ display: "flex", alignItems: "center", gap: 3, padding: "5px 6px", borderBottom: "1px solid var(--border-subtle)", flexShrink: 0 }}>
+          <FolderOpen size={11} style={{ color: "var(--accent-primary)", flexShrink: 0 }} />
+          <span style={{ fontSize: 10, fontWeight: 600, color: "var(--text-primary)", flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={folderRoot}>
+            {folderName}
+          </span>
+          <button onClick={async () => {
+            try { const invoke = await getInvoke(); const entries = await invoke<FileEntry[]>("list_directory", { path: folderRoot }); setFolderFiles(entries); } catch {}
+          }} style={{ ...btnS, background: "none", color: "var(--text-muted)", padding: "1px" }} title="Refresh"><RefreshCw size={9} /></button>
+          <button onClick={() => { setFolderRoot(null); setFolderFiles([]); setFolderTree({ expanded: new Set(), children: new Map(), loading: new Set() }); }}
+            style={{ ...btnS, background: "none", color: "var(--text-muted)", padding: "1px" }} title="Close folder"><X size={9} /></button>
+        </div>
+        {/* Search */}
+        <div style={{ padding: "3px 4px", flexShrink: 0 }}>
+          <div style={{ position: "relative" }}>
+            <Search size={9} style={{ position: "absolute", left: 5, top: 5, color: "var(--text-muted)" }} />
+            <input type="text" value={folderFilter} onChange={(e) => setFolderFilter(e.target.value)} placeholder="Filter..."
+              style={{ width: "100%", padding: "3px 18px 3px 20px", background: "var(--bg-tertiary)", border: "1px solid var(--border-subtle)", borderRadius: "var(--radius-sm)", color: "var(--text-primary)", fontSize: 9, outline: "none" }} />
+            {folderFilter && <button onClick={() => setFolderFilter("")} style={{ position: "absolute", right: 3, top: 3, background: "none", border: "none", color: "var(--text-muted)", cursor: "pointer", display: "flex", padding: 1 }}><X size={8} /></button>}
+          </div>
+        </div>
+        {/* Tree */}
+        <div style={{ flex: 1, overflowY: "auto", padding: "2px 0" }} className="hacking-log-container">
+          {filtered.map((entry) => renderFolderTreeItem(entry, 0))}
+        </div>
+      </div>
+    );
+  };
+
   if (!file) {
     return (
-      <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", height: "100%", color: "var(--text-muted)", fontSize: 12, gap: 8 }}>
-        <FileText size={32} style={{ opacity: 0.3 }} />
-        <div>No file open</div>
-        <div style={{ fontSize: 10 }}>Open files from Explorer or SFTP panel</div>
+      <div style={{ display: "flex", flexDirection: "column", height: "100%", position: "relative" }}>
+        {renderBrowser()}
+        {folderRoot && folderTreeVisible ? (
+          <div style={{ display: "flex", flex: 1, minHeight: 0 }}>
+            {renderFolderPanel()}
+            <div style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", color: "var(--text-muted)", fontSize: 12, gap: 8 }}>
+              <FileText size={28} style={{ opacity: 0.3 }} />
+              <div style={{ fontSize: 11 }}>Select a file from the tree</div>
+            </div>
+          </div>
+        ) : (
+          <div style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", color: "var(--text-muted)", fontSize: 12, gap: 12 }}>
+            <FileText size={32} style={{ opacity: 0.3 }} />
+            <div>No file open</div>
+            <div style={{ display: "flex", gap: 6, marginTop: 4 }}>
+              <button onClick={() => openFileBrowser("file")}
+                style={{ ...btnS, padding: "5px 12px", fontSize: 10, background: "var(--accent-primary)", color: "white", borderRadius: "var(--radius-md)", gap: 5 }}>
+                <File size={12} /> Open File
+              </button>
+              <button onClick={() => openFileBrowser("folder")}
+                style={{ ...btnS, padding: "5px 12px", fontSize: 10, background: "var(--bg-active)", color: "var(--text-primary)", borderRadius: "var(--radius-md)", gap: 5 }}>
+                <FolderOpenDot size={12} /> Open Folder
+              </button>
+            </div>
+            <div style={{ fontSize: 9, color: "var(--text-muted)", marginTop: 2 }}>or open files from Explorer / SFTP panel</div>
+          </div>
+        )}
       </div>
     );
   }
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", height: "100%", gap: 0 }}>
+    <div style={{ display: "flex", flexDirection: "column", height: "100%", gap: 0, position: "relative" }}>
+      {renderBrowser()}
       {/* Header */}
       <div style={{ display: "flex", alignItems: "center", gap: 4, padding: "4px 6px", background: "var(--bg-tertiary)", borderBottom: "1px solid var(--border-subtle)", flexShrink: 0, flexWrap: "wrap" }}>
+        {folderRoot && (
+          <button onClick={() => setFolderTreeVisible(!folderTreeVisible)} title={folderTreeVisible ? "Hide tree" : "Show tree"}
+            style={{ ...btnS, background: "none", color: "var(--text-muted)", padding: "2px" }}>
+            {folderTreeVisible ? <PanelLeftClose size={11} /> : <PanelLeftOpen size={11} />}
+          </button>
+        )}
         <FileText size={11} style={{ color: "var(--accent-primary)", flexShrink: 0 }} />
         <span style={{ fontSize: 11, fontWeight: 600, color: "var(--text-primary)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: 120 }}>
           {file.name}{file.modified ? " *" : ""}
@@ -448,6 +797,14 @@ export function EditorPanel() {
         {file.source === "sftp" && <span style={{ fontSize: 7, padding: "1px 3px", borderRadius: 2, background: "rgba(36,150,237,0.15)", color: "#2496ED" }}>SFTP</span>}
         {infra && <span style={{ fontSize: 7, padding: "1px 3px", borderRadius: 2, background: "rgba(16,185,129,0.1)", color: "#10B981", display: "flex", alignItems: "center", gap: 2 }}>{infra.icon} {infra.label}</span>}
         <div style={{ marginLeft: "auto", display: "flex", gap: 2, alignItems: "center" }}>
+          <button onClick={() => openFileBrowser("file")} title="Open File"
+            style={{ ...btnS, padding: "2px 5px", background: "var(--bg-active)", color: "var(--text-secondary)" }}>
+            <File size={8} />
+          </button>
+          <button onClick={() => openFileBrowser("folder")} title="Open Folder"
+            style={{ ...btnS, padding: "2px 5px", background: "var(--bg-active)", color: "var(--text-secondary)" }}>
+            <FolderOpenDot size={8} />
+          </button>
           {aiLoading && <Loader2 size={9} style={{ color: "var(--accent-primary)", animation: "spin 1s linear infinite" }} />}
           {aiAnalysis && !aiLoading && (
             <button onClick={() => setShowAnalysis(!showAnalysis)}
@@ -512,8 +869,10 @@ export function EditorPanel() {
         </div>
       )}
 
-      {/* Main area: editor + optional live logs */}
+      {/* Main area: folder tree + editor + optional live logs */}
       <div style={{ flex: 1, display: "flex", minHeight: 0 }}>
+        {/* Folder tree panel */}
+        {renderFolderPanel()}
         {/* CodeMirror editor */}
         <div ref={editorRef} style={{ flex: 1, overflow: "auto", minWidth: 0 }} />
 
