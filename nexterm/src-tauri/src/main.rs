@@ -518,6 +518,35 @@ fn save_app_config(data: String) -> Result<(), String> {
     std::fs::write(&config_path, data).map_err(|e| e.to_string())
 }
 
+#[tauri::command]
+fn open_in_explorer(path: String) -> Result<(), String> {
+    #[cfg(target_os = "windows")]
+    {
+        use std::os::windows::process::CommandExt;
+        const CREATE_NO_WINDOW: u32 = 0x08000000;
+        std::process::Command::new("explorer")
+            .arg(&path)
+            .creation_flags(CREATE_NO_WINDOW)
+            .spawn()
+            .map_err(|e| format!("Cannot open explorer: {}", e))?;
+    }
+    #[cfg(target_os = "macos")]
+    {
+        std::process::Command::new("open")
+            .arg(&path)
+            .spawn()
+            .map_err(|e| format!("Cannot open: {}", e))?;
+    }
+    #[cfg(target_os = "linux")]
+    {
+        std::process::Command::new("xdg-open")
+            .arg(&path)
+            .spawn()
+            .map_err(|e| format!("Cannot open: {}", e))?;
+    }
+    Ok(())
+}
+
 fn get_config_path() -> Result<std::path::PathBuf, String> {
     let data_dir = dirs::data_dir()
         .or_else(|| dirs::home_dir())
@@ -1159,6 +1188,7 @@ fn main() {
             write_shell_init_script,
             load_app_config,
             save_app_config,
+            open_in_explorer,
             ai_health,
             ai_list_models,
             ai_pull_model,

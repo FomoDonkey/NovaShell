@@ -192,10 +192,7 @@ body {
   user-select: none;
 }
 
-/* Ensure draggable elements can be dragged despite body user-select:none */
-[draggable="true"] {
-  cursor: grab;
-}
+
 
 .app-container {
   display: flex;
