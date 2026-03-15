@@ -1022,6 +1022,88 @@ async fn server_map_scan(
     Ok(services)
 }
 
+#[derive(Serialize, Deserialize, Clone)]
+pub struct ServerSystemInfo {
+    pub os: String,
+    pub kernel: String,
+    pub uptime: String,
+    pub cpu_count: String,
+    pub ram_usage: String,
+    pub disk_usage: String,
+}
+
+#[tauri::command]
+async fn server_map_system_info(
+    host: String,
+    port: u16,
+    username: String,
+    password: Option<String>,
+    private_key: Option<String>,
+) -> Result<ServerSystemInfo, String> {
+    let cmd = r#"echo "KERNEL:$(uname -srm)"; echo "OS:$(cat /etc/os-release 2>/dev/null | grep PRETTY_NAME | cut -d= -f2 | tr -d '"' || uname -o)"; echo "UPTIME:$(uptime -p 2>/dev/null || uptime | sed 's/.*up/up/')"; echo "CPU:$(nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo '?')"; echo "RAM:$(free -m 2>/dev/null | awk '/Mem:/{printf "%s/%sMB", $3, $2}' || echo 'N/A')"; echo "DISK:$(df -h / 2>/dev/null | awk 'NR==2{printf "%s/%s (%s)", $3, $2, $5}' || echo 'N/A')"#;
+
+    let (out, _) = ssh_manager::exec_command(
+        &host, port, &username,
+        password.as_deref(), private_key.as_deref(), cmd,
+    )?;
+
+    let mut info = ServerSystemInfo {
+        os: String::new(), kernel: String::new(), uptime: String::new(),
+        cpu_count: String::new(), ram_usage: String::new(), disk_usage: String::new(),
+    };
+    for line in out.lines() {
+        if let Some(v) = line.strip_prefix("KERNEL:") { info.kernel = v.trim().to_string(); }
+        else if let Some(v) = line.strip_prefix("OS:") { info.os = v.trim().to_string(); }
+        else if let Some(v) = line.strip_prefix("UPTIME:") { info.uptime = v.trim().to_string(); }
+        else if let Some(v) = line.strip_prefix("CPU:") { info.cpu_count = v.trim().to_string(); }
+        else if let Some(v) = line.strip_prefix("RAM:") { info.ram_usage = v.trim().to_string(); }
+        else if let Some(v) = line.strip_prefix("DISK:") { info.disk_usage = v.trim().to_string(); }
+    }
+    Ok(info)
+}
+
+#[derive(Serialize, Deserialize, Clone)]
+pub struct ServerQuickStats {
+    pub cpu_percent: String,
+    pub mem_percent: String,
+    pub disk_percent: String,
+    pub load_avg: String,
+    pub top_processes: Vec<String>,
+}
+
+#[tauri::command]
+async fn server_map_quick_stats(
+    host: String,
+    port: u16,
+    username: String,
+    password: Option<String>,
+    private_key: Option<String>,
+) -> Result<ServerQuickStats, String> {
+    let cmd = r#"echo "CPU:$(top -bn1 2>/dev/null | grep 'Cpu(s)' | awk '{printf "%.1f", $2+$4}' || echo '0')"; echo "MEM:$(free 2>/dev/null | awk '/Mem:/{printf "%.1f", $3/$2*100}' || echo '0')"; echo "DISK:$(df / 2>/dev/null | awk 'NR==2{gsub(/%/,"",$5); print $5}' || echo '0')"; echo "LOAD:$(cat /proc/loadavg 2>/dev/null | cut -d' ' -f1-3 || uptime | sed 's/.*load average: //')"; echo "---PROCS---"; ps aux --sort=-%cpu 2>/dev/null | awk 'NR>1 && NR<=6{printf "%s %s%% %s\n", $11, $3, $4}'"#;
+
+    let (out, _) = ssh_manager::exec_command(
+        &host, port, &username,
+        password.as_deref(), private_key.as_deref(), cmd,
+    )?;
+
+    let mut stats = ServerQuickStats {
+        cpu_percent: "0".into(), mem_percent: "0".into(),
+        disk_percent: "0".into(), load_avg: "".into(),
+        top_processes: Vec::new(),
+    };
+    let mut in_procs = false;
+    for line in out.lines() {
+        if line.contains("---PROCS---") { in_procs = true; continue; }
+        if in_procs {
+            if !line.trim().is_empty() { stats.top_processes.push(line.trim().to_string()); }
+        } else if let Some(v) = line.strip_prefix("CPU:") { stats.cpu_percent = v.trim().to_string(); }
+        else if let Some(v) = line.strip_prefix("MEM:") { stats.mem_percent = v.trim().to_string(); }
+        else if let Some(v) = line.strip_prefix("DISK:") { stats.disk_percent = v.trim().to_string(); }
+        else if let Some(v) = line.strip_prefix("LOAD:") { stats.load_avg = v.trim().to_string(); }
+    }
+    Ok(stats)
+}
+
 // ──────────── Hacking Mode Commands ────────────
 
 #[tauri::command]
@@ -1423,6 +1505,8 @@ fn main() {
             ssh_test_connection,
             ssh_exec,
             server_map_scan,
+            server_map_system_info,
+            server_map_quick_stats,
             keychain_save_password,
             keychain_get_password,
             keychain_delete_password,
