@@ -807,6 +807,26 @@ async fn ai_generate_session_doc(
     ai_manager::generate_session_doc(&commands, &errors, duration_minutes).await
 }
 
+#[tauri::command]
+async fn ai_generate_session_doc_with_template(
+    commands: Vec<String>,
+    errors: Vec<String>,
+    duration_minutes: u64,
+    template_structure: String,
+) -> Result<String, String> {
+    ai_manager::generate_session_doc_with_template(&commands, &errors, duration_minutes, &template_structure).await
+}
+
+#[tauri::command]
+fn save_pdf_to_downloads(bytes: Vec<u8>, filename: String) -> Result<String, String> {
+    let downloads = dirs::download_dir()
+        .or_else(|| dirs::home_dir().map(|h| h.join("Downloads")))
+        .unwrap_or_else(|| std::path::PathBuf::from("."));
+    let dest = downloads.join(&filename);
+    std::fs::write(&dest, &bytes).map_err(|e| format!("Write error: {}", e))?;
+    Ok(dest.to_string_lossy().to_string())
+}
+
 // ─── Session Doc Commands ───
 
 #[tauri::command]
@@ -1285,6 +1305,8 @@ fn main() {
             ai_pull_model,
             ai_chat,
             ai_generate_session_doc,
+            ai_generate_session_doc_with_template,
+            save_pdf_to_downloads,
             session_doc_save,
             session_doc_list,
             session_doc_load,

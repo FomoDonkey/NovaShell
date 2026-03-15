@@ -197,3 +197,69 @@ WRITING STYLE:
     )
     .await
 }
+
+pub async fn generate_session_doc_with_template(
+    commands: &[String],
+    errors: &[String],
+    duration_minutes: u64,
+    template_structure: &str,
+) -> Result<String, String> {
+    let prompt = format!(
+        r###"Write professional technical documentation for this terminal session.
+
+The user has provided a REFERENCE DOCUMENT as an example of their preferred style and structure. Follow this structure, tone, and formatting closely when organizing your documentation:
+
+{template}
+
+---
+
+SESSION DATA:
+- Duration: {duration} minutes
+- Commands ({cmd_count} total): {commands}
+{errors}
+
+INSTRUCTIONS:
+- Follow the reference document's structure and style as closely as possible
+- Start with a title (# Session Report) and overview
+- Organize into sections matching the reference style
+- For each section, explain WHAT was done and WHY, then show commands in code blocks
+- After each command, explain what it does — assume the reader may not know every flag
+- If there were errors, explain them in plain language
+- End with a Summary section
+- Write in the same language the commands/context suggest (default: English)
+- Make it professional, clear, and educational"###,
+        template = template_structure,
+        duration = duration_minutes,
+        cmd_count = commands.len(),
+        commands = commands
+            .iter()
+            .map(|c| format!("`{}`", c))
+            .collect::<Vec<_>>()
+            .join(", "),
+        errors = if errors.is_empty() {
+            "No errors during session.".to_string()
+        } else {
+            format!(
+                "Errors ({}):\n{}",
+                errors.len(),
+                errors
+                    .iter()
+                    .map(|e| format!("- {}", e))
+                    .collect::<Vec<_>>()
+                    .join("\n")
+            )
+        }
+    );
+
+    let messages = vec![ChatMessage {
+        role: "user".to_string(),
+        content: prompt,
+    }];
+
+    chat(
+        MODEL_DOCS,
+        "You are a senior technical writer. You produce clear, professional documentation that reads like a polished guide — fluid prose with well-explained commands, not just bullet lists. Every command you mention gets a brief explanation of what it does. Your writing is structured, educational, and easy to follow. You adapt your style to match the reference document provided by the user.",
+        &messages,
+    )
+    .await
+}
