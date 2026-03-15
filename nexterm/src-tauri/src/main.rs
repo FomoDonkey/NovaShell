@@ -1463,6 +1463,27 @@ fn base64_decode(input: &str) -> Result<Vec<u8>, String> {
     Ok(buf)
 }
 
+#[tauri::command]
+fn write_file(path: String, content: String) -> Result<(), String> {
+    std::fs::write(&path, &content).map_err(|e| format!("Write error: {}", e))
+}
+
+#[tauri::command]
+fn sftp_write_text(
+    session_id: String,
+    path: String,
+    content: String,
+    state: State<'_, AppState>,
+) -> Result<(), String> {
+    let session = {
+        let sessions = state.sftp_sessions.lock()
+            .map_err(|e| format!("SFTP session lock error: {}", e))?;
+        std::sync::Arc::clone(sessions.get(&session_id)
+            .ok_or_else(|| format!("SFTP session '{}' not found", session_id))?)
+    };
+    session.write_text_file(&path, &content)
+}
+
 fn chrono_timestamp() -> String {
     let now = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
@@ -1558,6 +1579,8 @@ fn main() {
             sftp_rename,
             sftp_home_dir,
             sftp_read_text,
+            sftp_write_text,
+            write_file,
         ])
         .run(tauri::generate_context!())
         .expect("error while running NovaShell");

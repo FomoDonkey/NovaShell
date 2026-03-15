@@ -158,6 +158,17 @@ export function FileExplorer() {
     }
   }, [setPreviewFile]);
 
+  const openInEditor = useCallback(async (file: FileEntry) => {
+    try {
+      const invoke = await getInvoke();
+      const content = await invoke<string>("read_file_preview", { path: file.path });
+      window.dispatchEvent(new CustomEvent("novashell-open-editor", {
+        detail: { path: file.path, name: file.name, content, source: "local" },
+      }));
+      useAppStore.getState().setSidebarTab("editor");
+    } catch {}
+  }, []);
+
   const goUp = useCallback(() => {
     const parent = rootPath.replace(/[/\\][^/\\]*$/, "");
     if (parent && parent !== rootPath) {
@@ -181,6 +192,15 @@ export function FileExplorer() {
           <span style={{ fontSize: 12, fontWeight: 600, color: "var(--text-primary)", flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
             {previewFile.name}
           </span>
+          <button onClick={() => {
+            // Open current preview file in editor
+            window.dispatchEvent(new CustomEvent("novashell-open-editor", {
+              detail: { path: rootPath + (rootPath.includes("\\") ? "\\" : "/") + previewFile.name, name: previewFile.name, content: previewFile.content, source: "local" },
+            }));
+            useAppStore.getState().setSidebarTab("editor");
+          }} style={{ padding: "2px 6px", border: "none", borderRadius: "var(--radius-sm)", background: "var(--accent-primary)", color: "white", fontSize: 9, cursor: "pointer", fontFamily: "inherit", display: "flex", alignItems: "center", gap: 3 }}>
+            Edit
+          </button>
           <span style={{ fontSize: 10, color: getExtColor(previewFile.extension), fontWeight: 600, textTransform: "uppercase" }}>
             {previewFile.extension}
           </span>

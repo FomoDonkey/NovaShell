@@ -807,6 +807,18 @@ function SFTPExplorer({
     }
   };
 
+  // Open remote file in editor
+  const openInEditor = async (entry: RemoteFileEntry) => {
+    try {
+      const invoke = await getInvoke();
+      const content = await invoke<string>("sftp_read_text", { sessionId, path: entry.path });
+      window.dispatchEvent(new CustomEvent("novashell-open-editor", {
+        detail: { path: entry.path, name: entry.name, content, source: "sftp", sftpSessionId: sessionId },
+      }));
+      useAppStore.getState().setSidebarTab("editor");
+    } catch {}
+  };
+
   // Toggle selection
   const toggleRemoteSelect = (path: string) => {
     setSelectedRemote((prev) => {
@@ -1111,6 +1123,9 @@ function SFTPExplorer({
                       <>
                         <button onClick={(e) => { e.stopPropagation(); handlePreview(entry); }} style={{ background: "none", border: "none", color: "var(--text-muted)", cursor: "pointer", padding: 1 }} title="Preview">
                           <Eye size={10} />
+                        </button>
+                        <button onClick={(e) => { e.stopPropagation(); openInEditor(entry); }} style={{ background: "none", border: "none", color: "var(--accent-primary)", cursor: "pointer", padding: 1 }} title="Edit in Editor">
+                          <Edit3 size={10} />
                         </button>
                         <span style={{ fontSize: 9, color: "var(--text-muted)", flexShrink: 0 }}>{formatSize(entry.size)}</span>
                       </>

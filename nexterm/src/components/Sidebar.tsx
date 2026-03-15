@@ -41,6 +41,7 @@ import { SessionDocPanel } from "./SessionDocPanel";
 import { HackingPanel } from "./HackingPanel";
 import { SFTPPanel } from "./SFTPPanel";
 import { ServerMapPanel } from "./ServerMapPanel";
+import { EditorPanel } from "./EditorPanel";
 
 const sidebarTabs: { id: SidebarTab; icon: typeof History; label: string }[] = [
   { id: "history", icon: History, label: "History" },
@@ -51,6 +52,7 @@ const sidebarTabs: { id: SidebarTab; icon: typeof History; label: string }[] = [
   { id: "ssh", icon: Monitor, label: "SSH" },
   { id: "sftp", icon: FolderSync, label: "SFTP Transfer" },
   { id: "servermap", icon: Activity, label: "Server Map" },
+  { id: "editor", icon: Edit3, label: "Editor" },
   { id: "debug", icon: Bug, label: "Debug" },
   { id: "ai", icon: Sparkles, label: "AI Assistant" },
   { id: "docs", icon: FileText, label: "Session Docs" },
@@ -90,6 +92,7 @@ export function Sidebar() {
         {sidebarTab === "ssh" && <SSHPanel />}
         {sidebarTab === "sftp" && <SFTPPanel />}
         {sidebarTab === "servermap" && <ServerMapPanel />}
+        {sidebarTab === "editor" && <EditorPanel />}
         {sidebarTab === "debug" && <DebugPanel />}
         {sidebarTab === "ai" && <AIPanel />}
         {sidebarTab === "docs" && <SessionDocPanel />}

@@ -330,6 +330,21 @@ impl SftpSession {
         })
     }
 
+    /// Write text content to a remote file (create or overwrite)
+    pub fn write_text_file(&self, remote_path: &str, content: &str) -> Result<(), String> {
+        let normalized = normalize_remote_path(remote_path);
+        let session = self.session.lock()
+            .map_err(|e| format!("Session lock error: {}", e))?;
+        let sftp = session.sftp()
+            .map_err(|e| format!("SFTP subsystem error: {}", e))?;
+
+        let mut file = sftp.create(Path::new(&normalized))
+            .map_err(|e| format!("Cannot create {}: {}", normalized, e))?;
+        file.write_all(content.as_bytes())
+            .map_err(|e| format!("Write error: {}", e))?;
+        Ok(())
+    }
+
     pub fn is_connected(&self) -> bool {
         self.session.lock().map(|s| s.authenticated()).unwrap_or(false)
     }
