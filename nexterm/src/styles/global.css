@@ -192,9 +192,9 @@ body {
   user-select: none;
 }
 
-/* Fix HTML5 drag & drop in WebView2 — body user-select:none blocks drag without this */
+/* Ensure draggable elements can be dragged despite body user-select:none */
 [draggable="true"] {
-  -webkit-user-drag: element;
+  cursor: grab;
 }
 
 .app-container {

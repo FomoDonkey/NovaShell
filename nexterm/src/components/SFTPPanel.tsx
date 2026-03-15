@@ -19,6 +19,7 @@ import {
   Edit3,
   ArrowUpDown,
   Eye,
+  FolderOpen,
 } from "lucide-react";
 import { useAppStore } from "../store/appStore";
 import type { SSHConnection } from "../store/appStore";
@@ -528,7 +529,7 @@ function SFTPExplorer({
           setTransferStatus(`Error downloading ${f.name}: ${errMsg}`);
         }
       }
-      if (successCount === items.length) setTransferStatus(`Downloaded ${successCount} item(s)`);
+      if (successCount > 0) setTransferStatus(`DOWNLOADED:${curLocalPath}`);
       setSelectedRemote(new Set());
     } catch (e) {
       setTransferStatus(`Download failed: ${String(e)}`);
@@ -536,6 +537,20 @@ function SFTPExplorer({
       transferringRef.current = false;
       setTransferring(false);
       loadLocal(curLocalPath);
+    }
+  };
+
+  // Open a local folder in the system file explorer
+  const openLocalFolder = async (folderPath: string) => {
+    try {
+      const shell = await import("@tauri-apps/plugin-shell");
+      await shell.open(folderPath);
+    } catch {
+      // Fallback: try via invoke
+      try {
+        const invoke = await getInvoke();
+        await invoke("run_command_output", { command: "explorer", args: [folderPath], cwd: null });
+      } catch {}
     }
   };
 
@@ -810,17 +825,38 @@ function SFTPExplorer({
       {/* Status message */}
       {transferStatus && (
         <div
-          onClick={() => setTransferStatus(null)}
           style={{
             padding: "5px 8px", marginBottom: 4, fontSize: 10, borderRadius: "var(--radius-sm)",
-            background: transferStatus.startsWith("Error") || transferStatus.startsWith("Download failed") || transferStatus.startsWith("Upload failed") || transferStatus.startsWith("Transfer failed")
-              ? "rgba(248,81,73,0.15)" : "rgba(88,166,255,0.15)",
-            color: transferStatus.startsWith("Error") || transferStatus.startsWith("Download failed") || transferStatus.startsWith("Upload failed") || transferStatus.startsWith("Transfer failed")
-              ? "var(--accent-error)" : "var(--accent-primary)",
-            border: "1px solid currentColor", cursor: "pointer", flexShrink: 0,
+            background: transferStatus.startsWith("Error") || transferStatus.includes("failed")
+              ? "rgba(248,81,73,0.15)"
+              : transferStatus.startsWith("DOWNLOADED:") ? "rgba(63,185,80,0.15)" : "rgba(88,166,255,0.15)",
+            color: transferStatus.startsWith("Error") || transferStatus.includes("failed")
+              ? "var(--accent-error)"
+              : transferStatus.startsWith("DOWNLOADED:") ? "var(--accent-secondary)" : "var(--accent-primary)",
+            border: "1px solid currentColor", flexShrink: 0,
+            display: "flex", alignItems: "center", gap: 6,
           }}
         >
-          {transferStatus}
+          {transferStatus.startsWith("DOWNLOADED:") ? (
+            <>
+              <span style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                Downloaded to: {transferStatus.replace("DOWNLOADED:", "")}
+              </span>
+              <button
+                onClick={() => openLocalFolder(transferStatus.replace("DOWNLOADED:", ""))}
+                style={{ ...btnStyle, background: "var(--accent-secondary)", color: "white", padding: "2px 8px", fontSize: 9, flexShrink: 0 }}
+              >
+                <FolderOpen size={10} /> Open
+              </button>
+              <button onClick={() => setTransferStatus(null)} style={{ background: "none", border: "none", color: "currentColor", cursor: "pointer", padding: 1 }}>
+                <X size={10} />
+              </button>
+            </>
+          ) : (
+            <span onClick={() => setTransferStatus(null)} style={{ cursor: "pointer", flex: 1 }}>
+              {transferStatus}
+            </span>
+          )}
         </div>
       )}
 
@@ -866,20 +902,16 @@ function SFTPExplorer({
           }}
           onClick={() => setActivePanel("local")}
           onDragEnter={(e) => {
-            if (dragDataRef.current?.side === "remote") {
-              e.preventDefault();
-              dragCounterLocal.current++;
-              setDragOver("local");
-            }
+            e.preventDefault();
+            dragCounterLocal.current++;
+            if (dragDataRef.current && dragDataRef.current.side !== "local") setDragOver("local");
           }}
           onDragOver={(e) => {
-            if (dragDataRef.current?.side === "remote") {
-              e.preventDefault();
-              e.dataTransfer.dropEffect = "copy";
-            }
+            e.preventDefault();
+            e.dataTransfer.dropEffect = dragDataRef.current && dragDataRef.current.side !== "local" ? "copy" : "move";
           }}
           onDragLeave={() => { dragCounterLocal.current--; if (dragCounterLocal.current <= 0) { dragCounterLocal.current = 0; setDragOver(null); } }}
-          onDrop={(e) => { e.preventDefault(); dragCounterLocal.current = 0; handleDrop("local"); }}
+          onDrop={(e) => { e.preventDefault(); dragCounterLocal.current = 0; setDragOver(null); handleDrop("local"); }}
         >
           <div style={{
             display: "flex", alignItems: "center", gap: 4, padding: "4px 6px",
@@ -951,20 +983,16 @@ function SFTPExplorer({
           }}
           onClick={() => setActivePanel("remote")}
           onDragEnter={(e) => {
-            if (dragDataRef.current?.side === "local") {
-              e.preventDefault();
-              dragCounterRemote.current++;
-              setDragOver("remote");
-            }
+            e.preventDefault();
+            dragCounterRemote.current++;
+            if (dragDataRef.current && dragDataRef.current.side !== "remote") setDragOver("remote");
           }}
           onDragOver={(e) => {
-            if (dragDataRef.current?.side === "local") {
-              e.preventDefault();
-              e.dataTransfer.dropEffect = "copy";
-            }
+            e.preventDefault();
+            e.dataTransfer.dropEffect = dragDataRef.current && dragDataRef.current.side !== "remote" ? "copy" : "move";
           }}
           onDragLeave={() => { dragCounterRemote.current--; if (dragCounterRemote.current <= 0) { dragCounterRemote.current = 0; setDragOver(null); } }}
-          onDrop={(e) => { e.preventDefault(); dragCounterRemote.current = 0; handleDrop("remote"); }}
+          onDrop={(e) => { e.preventDefault(); dragCounterRemote.current = 0; setDragOver(null); handleDrop("remote"); }}
         >
           <div style={{
             display: "flex", alignItems: "center", gap: 4, padding: "4px 6px",

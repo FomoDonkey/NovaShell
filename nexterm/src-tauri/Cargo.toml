@@ -1,6 +1,6 @@
 [package]
 name = "novaterm"
-version = "1.4.19"
+version = "1.4.20"
 description = "NovaShell - Modern Terminal Emulator"
 authors = ["NovaShell Team"]
 license = "MIT"
