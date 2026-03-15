@@ -292,3 +292,73 @@ pub fn test_ssh_connection(
         Err("Authentication failed".to_string())
     }
 }
+
+/// Execute a command on a remote server via a temporary SSH connection.
+/// Returns (stdout, exit_code). Creates and closes its own session.
+pub fn exec_command(
+    host: &str,
+    port: u16,
+    username: &str,
+    password: Option<&str>,
+    private_key: Option<&str>,
+    command: &str,
+) -> Result<(String, i32), String> {
+    let addr = format!("{}:{}", host, port);
+
+    use std::net::ToSocketAddrs;
+    let socket_addr = addr
+        .to_socket_addrs()
+        .map_err(|e| format!("Cannot resolve {}: {}", addr, e))?
+        .next()
+        .ok_or_else(|| format!("Could not resolve host: {}", host))?;
+
+    let tcp = TcpStream::connect_timeout(
+        &socket_addr,
+        std::time::Duration::from_secs(10),
+    ).map_err(|e| format!("Connection failed to {}: {}", addr, e))?;
+
+    let mut session = Session::new()
+        .map_err(|e| format!("Session creation failed: {}", e))?;
+
+    session.set_tcp_stream(tcp);
+    session.set_timeout(15000);
+    session.handshake()
+        .map_err(|e| format!("Handshake failed: {}", e))?;
+
+    // Authenticate
+    if let Some(key_content) = private_key {
+        let temp_dir = std::env::temp_dir();
+        let key_path = temp_dir.join(format!("novashell_exec_{}", uuid::Uuid::new_v4()));
+        std::fs::write(&key_path, key_content)
+            .map_err(|e| format!("Failed to write temp key: {}", e))?;
+        let result = session.userauth_pubkey_file(username, None, &key_path, password);
+        let _ = std::fs::remove_file(&key_path);
+        result.map_err(|e| format!("Key auth failed: {}", e))?;
+    } else if let Some(pass) = password {
+        session.userauth_password(username, pass)
+            .map_err(|e| format!("Password auth failed: {}", e))?;
+    } else {
+        return Err("No authentication method provided".to_string());
+    }
+
+    if !session.authenticated() {
+        return Err("Authentication failed".to_string());
+    }
+
+    // Execute command
+    let mut channel = session.channel_session()
+        .map_err(|e| format!("Channel error: {}", e))?;
+    channel.exec(command)
+        .map_err(|e| format!("Exec error: {}", e))?;
+
+    let mut stdout = String::new();
+    channel.read_to_string(&mut stdout)
+        .map_err(|e| format!("Read error: {}", e))?;
+
+    channel.wait_close().ok();
+    let exit_code = channel.exit_status().unwrap_or(-1);
+
+    let _ = session.disconnect(None, "Exec complete", None);
+
+    Ok((stdout, exit_code))
+}

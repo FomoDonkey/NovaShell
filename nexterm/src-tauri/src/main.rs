@@ -885,6 +885,143 @@ fn get_process_list(state: State<'_, AppState>) -> Result<Vec<system_info::Proce
     Ok(system_info::get_top_processes(&mut sys, 15))
 }
 
+// ──────────── SSH Exec & Server Map ────────────
+
+#[derive(Serialize, Deserialize, Clone)]
+pub struct DetectedService {
+    pub name: String,
+    pub kind: String,       // "systemd" | "docker" | "port"
+    pub status: String,     // "running" | "active" | "listening"
+    pub port: Option<u16>,
+    pub detail: String,     // version, image, etc.
+}
+
+#[tauri::command]
+async fn ssh_exec(
+    host: String,
+    port: u16,
+    username: String,
+    password: Option<String>,
+    private_key: Option<String>,
+    command: String,
+) -> Result<String, String> {
+    let (stdout, _) = ssh_manager::exec_command(
+        &host, port, &username,
+        password.as_deref(), private_key.as_deref(),
+        &command,
+    )?;
+    Ok(stdout)
+}
+
+#[tauri::command]
+async fn server_map_scan(
+    host: String,
+    port: u16,
+    username: String,
+    password: Option<String>,
+    private_key: Option<String>,
+) -> Result<Vec<DetectedService>, String> {
+    let exec = |cmd: &str| -> String {
+        ssh_manager::exec_command(
+            &host, port, &username,
+            password.as_deref(), private_key.as_deref(),
+            cmd,
+        ).map(|(out, _)| out).unwrap_or_default()
+    };
+
+    let mut services: Vec<DetectedService> = Vec::new();
+
+    // 1. Detect listening ports
+    let ports_output = exec("ss -tlnp 2>/dev/null || netstat -tlnp 2>/dev/null");
+    for line in ports_output.lines().skip(1) {
+        let parts: Vec<&str> = line.split_whitespace().collect();
+        if parts.len() < 4 { continue; }
+        let addr = parts[3];
+        if let Some(port_str) = addr.rsplit(':').next() {
+            if let Ok(p) = port_str.parse::<u16>() {
+                let process = parts.get(5).or(parts.get(6)).unwrap_or(&"").to_string();
+                let svc_name = match p {
+                    22 => "SSH", 80 => "HTTP", 443 => "HTTPS", 3306 => "MySQL",
+                    5432 => "PostgreSQL", 6379 => "Redis", 8080 => "HTTP-Alt",
+                    27017 => "MongoDB", 9090 => "Prometheus", 3000 => "Grafana/Dev",
+                    5000 => "Flask/Dev", 8443 => "HTTPS-Alt", 9200 => "Elasticsearch",
+                    _ => "Service",
+                };
+                services.push(DetectedService {
+                    name: svc_name.to_string(),
+                    kind: "port".to_string(),
+                    status: "listening".to_string(),
+                    port: Some(p),
+                    detail: process.trim_start_matches("users:((\"").trim_end_matches("\"))").to_string(),
+                });
+            }
+        }
+    }
+
+    // 2. Detect systemd services
+    let systemd_output = exec("systemctl list-units --type=service --state=running --no-pager --plain --no-legend 2>/dev/null");
+    for line in systemd_output.lines() {
+        let parts: Vec<&str> = line.split_whitespace().collect();
+        if parts.is_empty() { continue; }
+        let unit = parts[0].trim_end_matches(".service");
+        // Skip generic/internal services
+        if unit.starts_with("sys-") || unit.starts_with("user@") || unit.contains("dbus")
+            || unit.contains("systemd-") || unit.contains("getty") || unit.contains("cron")
+            || unit.contains("snapd") || unit.contains("unattended") {
+            continue;
+        }
+        // Avoid duplicating port-based entries
+        let already = services.iter().any(|s| s.name.to_lowercase().contains(&unit.to_lowercase()));
+        if !already {
+            services.push(DetectedService {
+                name: unit.to_string(),
+                kind: "systemd".to_string(),
+                status: "running".to_string(),
+                port: None,
+                detail: parts.get(4..).map(|p| p.join(" ")).unwrap_or_default(),
+            });
+        }
+    }
+
+    // 3. Detect Docker containers
+    let docker_output = exec("docker ps --format '{{.Names}}|{{.Image}}|{{.Status}}|{{.Ports}}' 2>/dev/null");
+    for line in docker_output.lines() {
+        let parts: Vec<&str> = line.split('|').collect();
+        if parts.len() < 3 { continue; }
+        services.push(DetectedService {
+            name: parts[0].to_string(),
+            kind: "docker".to_string(),
+            status: parts.get(2).unwrap_or(&"").to_string(),
+            port: None,
+            detail: format!("{} — {}", parts.get(1).unwrap_or(&""), parts.get(3).unwrap_or(&"")),
+        });
+    }
+
+    // 4. Get versions of common services
+    let versions = exec("nginx -v 2>&1; apache2 -v 2>&1 | head -1; node -v 2>&1; python3 --version 2>&1; php -v 2>&1 | head -1; java -version 2>&1 | head -1; go version 2>&1; redis-server --version 2>&1; psql --version 2>&1");
+    for line in versions.lines() {
+        let line = line.trim();
+        if line.is_empty() || line.contains("not found") || line.contains("No such") { continue; }
+        // Try to enrich existing services with version info
+        let lower = line.to_lowercase();
+        for svc in services.iter_mut() {
+            let svc_lower = svc.name.to_lowercase();
+            if (svc_lower.contains("nginx") && lower.contains("nginx"))
+                || (svc_lower.contains("apache") && lower.contains("apache"))
+                || (svc_lower.contains("redis") && lower.contains("redis"))
+                || (svc_lower.contains("postgres") && lower.contains("psql"))
+            {
+                svc.detail = line.to_string();
+            }
+        }
+    }
+
+    // Deduplicate by name+port
+    services.dedup_by(|a, b| a.name == b.name && a.port == b.port);
+
+    Ok(services)
+}
+
 // ──────────── Hacking Mode Commands ────────────
 
 #[tauri::command]
@@ -1284,6 +1421,8 @@ fn main() {
             ssh_resize,
             ssh_disconnect,
             ssh_test_connection,
+            ssh_exec,
+            server_map_scan,
             keychain_save_password,
             keychain_get_password,
             keychain_delete_password,
