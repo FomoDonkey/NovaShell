@@ -214,6 +214,31 @@ export const es: Record<string, any> = {
     newTab: "Nueva Pestana Terminal",
   },
 
+  // Panel RDP — Lanzador de Escritorio Remoto
+  rdp: {
+    connections: "Conexiones RDP",
+    addConnection: "Agregar Conexion",
+    connectionName: "Nombre de Conexion",
+    myDesktop: "Mi Escritorio",
+    hostIp: "Servidor / IP",
+    port: "Puerto",
+    username: "Usuario",
+    domain: "Dominio",
+    domainPlaceholder: "(opcional)",
+    password: "Contrasena",
+    passwordPlaceholder: "Ingresa contrasena...",
+    saveKeychain: "Guardar en llavero del sistema",
+    dontSave: "No guardar contrasena",
+    display: "Pantalla",
+    fullscreen: "Pantalla completa",
+    useMultimon: "Usar todos los monitores",
+    adminSession: "Sesion admin (consola)",
+    enterPassword: "Ingresa contrasena para",
+    keychainSavedTitle: "Contrasena guardada en el llavero del sistema",
+    noConnectionsYet: "Aun no hay conexiones RDP.",
+    clickToAdd: "Haz clic en + para agregar una.",
+  },
+
   // Panel SFTP
   sftp: {
     title: "Transferencia de Archivos SFTP",

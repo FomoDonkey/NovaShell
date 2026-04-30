@@ -276,12 +276,30 @@
 - [x] SSH Scrollback: SSHPanel restores scrollback when re-opening terminal for active session
 - [x] Rust compilation verified (cargo check passed)
 
-## Completed (SSH private key auth fix — CRLF/whitespace/PPK)
-- [x] Add `prepare_private_key()` helper in ssh_manager.rs — normalizes CRLF→LF, trims whitespace, ensures trailing LF, detects PPK format with clear error, validates PEM header
-- [x] Apply normalizer in all 4 ssh_manager paths (connect, log stream, test, exec_command)
-- [x] Apply normalizer in sftp_manager.rs via `ssh_manager::prepare_private_key`
-- [x] Frontend `isPassphraseError` already ignores new helpful errors — PPK/invalid-format errors go straight to banner instead of triggering passphrase prompt
-- [x] Rust cargo check passed
+## Completed (SSH ed25519 auth on Windows — v3.3.4 through v3.3.7)
+- [x] v3.3.4: `prepare_private_key()` — CRLF→LF, PPK detection, PEM header validation
+- [x] v3.3.5: `vendored-openssl` on Windows + `userauth_pubkey_memory` — hung (WinCNG still active, memory API broken on WinCNG)
+- [x] v3.3.6: Revert to `userauth_pubkey_file` — still errored (WinCNG still active)
+- [x] v3.3.7: Add `openssl-on-win32` feature — libssh2 now defines LIBSSH2_OPENSSL → ed25519 works
+- [x] CI: Strawberry Perl via PERL env var for vendored OpenSSL build on windows-latest
+- [x] FileReader onerror handler in SSHPanel key upload
+- [x] Installed Strawberry Perl locally via winget for local builds
+- [x] Windows Defender exclusion for NovaShell folder
+
+## Completed (RDP one-click launcher — Option A)
+- [x] Store: `RDPConnection` type (id, name, host, port=3389, username, domain, fullscreen, width, height, multimon, admin, sessionPassword)
+- [x] Store: `rdpConnections` state + add/update/remove actions, persistence (excludes sessionPassword)
+- [x] Store: `rdp` added to `PanelTabType` + title map
+- [x] Rust: `rdp_manager.rs` — Windows path uses `cmdkey /generic:TERMSRV/<host>` + temp `.rdp` file + `mstsc`; cleanup thread deletes both after 8s
+- [x] Rust: input validation (no NUL/CR/LF in host/user/domain/password)
+- [x] Rust: macOS path opens `rdp://...` URL (Microsoft Remote Desktop), Linux path runs `xfreerdp`
+- [x] Rust: `rdp_connect` Tauri command registered in main.rs
+- [x] Frontend: `RDPPanel.tsx` mirrors SSHPanel UX (list + form + per-connection Connect/Edit/Delete)
+- [x] Frontend: keychain integration (save password on first connect, ShieldCheck badge, prompt with save mode)
+- [x] Frontend: resolution presets (1280×800 → 2560×1440 + Fullscreen) + multimon + admin checkboxes
+- [x] PanelContainer.tsx + TabBar.tsx — RDP entry in Connections menu (LayoutGrid icon)
+- [x] i18n: en + es keys for rdp.*
+- [x] TypeScript + Rust compilation verified
 
 ## Pending
 - [ ] Test Collaborative Terminal with two NovaShell instances on LAN

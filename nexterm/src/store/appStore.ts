@@ -13,7 +13,7 @@ export interface CustomThemeColors {
   terminalCursor: string;
 }
 export type SidebarTab = "history" | "snippets" | "preview" | "plugins" | "stats";
-export type PanelTabType = "ssh" | "sftp" | "editor" | "ai" | "debug" | "hacking" | "infra" | "collab" | "servermap" | "docs" | "backups";
+export type PanelTabType = "ssh" | "sftp" | "rdp" | "editor" | "ai" | "debug" | "hacking" | "infra" | "collab" | "servermap" | "docs" | "backups";
 export type AppLanguage = "en" | "es";
 
 // === Backup Manager Types ===
@@ -237,6 +237,23 @@ export interface SSHConnection {
   errorMessage?: string;
 }
 
+export interface RDPConnection {
+  id: string;
+  name: string;
+  host: string;
+  port: number;          // default 3389
+  username: string;
+  domain?: string;
+  fullscreen?: boolean;
+  width?: number;        // ignored when fullscreen
+  height?: number;       // ignored when fullscreen
+  multimon?: boolean;
+  admin?: boolean;       // /admin (console session)
+  sessionPassword?: string; // In-memory only, never persisted to disk
+  status: "disconnected" | "launching" | "error";
+  errorMessage?: string;
+}
+
 export type LogLevel = "error" | "warn" | "info" | "debug" | "trace" | "output";
 
 export interface DebugLogEntry {
@@ -407,6 +424,7 @@ interface PersistedConfig {
   snippets?: Snippet[];
   snippetFolders?: SnippetFolder[];
   sshConnections?: Array<Omit<SSHConnection, "status" | "sessionId" | "errorMessage" | "sessionPassword">>;
+  rdpConnections?: Array<Omit<RDPConnection, "status" | "errorMessage" | "sessionPassword">>;
   plugins?: PluginEntry[];
   history?: HistoryEntry[];
   debugPersist?: boolean;
@@ -447,6 +465,9 @@ function buildPersistedConfig(): PersistedConfig {
     snippets: s.snippets,
     snippetFolders: s.snippetFolders,
     sshConnections: s.sshConnections.map(({ status, sessionId, errorMessage, sessionPassword, ...rest }) => rest),
+    rdpConnections: s.rdpConnections.length > 0
+      ? s.rdpConnections.map(({ status, errorMessage, sessionPassword, ...rest }) => rest)
+      : undefined,
     plugins: s.plugins,
     history: s.history.slice(0, 200).map(({ screenshot, ...rest }) => rest),
     debugPersist: s.debugPersist,
@@ -614,6 +635,11 @@ interface AppState {
   addSSHConnection: (conn: Omit<SSHConnection, "id" | "status">) => void;
   updateSSHConnection: (id: string, updates: Partial<SSHConnection>) => void;
   removeSSHConnection: (id: string) => void;
+
+  rdpConnections: RDPConnection[];
+  addRDPConnection: (conn: Omit<RDPConnection, "id" | "status">) => void;
+  updateRDPConnection: (id: string, updates: Partial<RDPConnection>) => void;
+  removeRDPConnection: (id: string) => void;
   // Cross-component signal: when set, SSHPanel auto-triggers startConnect
   // for this connection (opens password prompt if needed). Used by TabBar
   // and TerminalPanel to recover from "no credentials" on saved connections.
@@ -826,7 +852,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     tabCounter++;
     const id = `tab-${tabCounter}`;
     const titles: Record<PanelTabType, string> = {
-      ssh: "SSH", sftp: "SFTP", editor: "Editor", ai: "AI Assistant",
+      ssh: "SSH", sftp: "SFTP", rdp: "RDP", editor: "Editor", ai: "AI Assistant",
       debug: "Debug", hacking: "Hacking", infra: "Infra Monitor",
       collab: "Collaboration", servermap: "Server Map", docs: "Session Docs",
       backups: "Backup Manager",
@@ -1094,6 +1120,34 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   removeSSHConnection: (id) => {
     set((s) => ({ sshConnections: s.sshConnections.filter((c) => c.id !== id) }));
+    scheduleSave();
+  },
+
+  rdpConnections: [],
+
+  addRDPConnection: (conn) => {
+    const newConn: RDPConnection = { ...conn, id: crypto.randomUUID(), status: "disconnected" };
+    set((s) => ({ rdpConnections: [...s.rdpConnections, newConn] }));
+    scheduleSave();
+  },
+
+  updateRDPConnection: (id, updates) => {
+    set((s) => ({
+      rdpConnections: s.rdpConnections.map((c) => (c.id === id ? { ...c, ...updates } : c)),
+    }));
+    // Skip save when only runtime fields changed
+    if (
+      updates.name || updates.host || updates.port || updates.username ||
+      updates.domain !== undefined || updates.fullscreen !== undefined ||
+      updates.width || updates.height || updates.multimon !== undefined ||
+      updates.admin !== undefined
+    ) {
+      scheduleSave();
+    }
+  },
+
+  removeRDPConnection: (id) => {
+    set((s) => ({ rdpConnections: s.rdpConnections.filter((c) => c.id !== id) }));
     scheduleSave();
   },
 
@@ -1795,6 +1849,13 @@ export const useAppStore = create<AppState>((set, get) => ({
         ...c,
         status: "disconnected" as const,
         sessionId: undefined,
+        errorMessage: undefined,
+      }));
+    }
+    if (config.rdpConnections && config.rdpConnections.length > 0) {
+      updates.rdpConnections = config.rdpConnections.map((c) => ({
+        ...c,
+        status: "disconnected" as const,
         errorMessage: undefined,
       }));
     }

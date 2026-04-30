@@ -7,6 +7,7 @@ mod infra_monitor;
 mod keychain_manager;
 mod log_manager;
 mod pty_manager;
+mod rdp_manager;
 mod session_doc_manager;
 mod sftp_manager;
 mod ssh_manager;
@@ -597,6 +598,25 @@ fn keychain_get_password(connection_id: String) -> Result<Option<String>, String
 #[tauri::command]
 fn keychain_delete_password(connection_id: String) -> Result<(), String> {
     keychain_manager::delete_password(&connection_id)
+}
+
+#[tauri::command]
+fn rdp_connect(
+    host: String,
+    port: Option<u16>,
+    username: String,
+    domain: Option<String>,
+    password: Option<String>,
+    fullscreen: Option<bool>,
+    width: Option<u32>,
+    height: Option<u32>,
+    multimon: Option<bool>,
+    admin: Option<bool>,
+) -> Result<(), String> {
+    rdp_manager::launch_rdp(
+        host, port, username, domain, password,
+        fullscreen, width, height, multimon, admin,
+    )
 }
 
 #[tauri::command]
@@ -2147,6 +2167,7 @@ fn main() {
             keychain_save_password,
             keychain_get_password,
             keychain_delete_password,
+            rdp_connect,
             debug_log_save,
             debug_log_list_sessions,
             debug_log_load_session,

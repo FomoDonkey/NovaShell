@@ -20,6 +20,7 @@ const shellIcons: Record<string, string> = {
 const panelIconMap: Record<PanelTabType, React.ReactNode> = {
   ssh: <Monitor size={14} />,
   sftp: <FolderSync size={14} />,
+  rdp: <LayoutGrid size={14} />,
   servermap: <Activity size={14} />,
   collab: <Users size={14} />,
   editor: <Edit3 size={14} />,
@@ -34,6 +35,7 @@ const panelIconMap: Record<PanelTabType, React.ReactNode> = {
 const panelTabIconMap: Record<PanelTabType, React.ReactNode> = {
   ssh: <Monitor size={10} />,
   sftp: <FolderSync size={10} />,
+  rdp: <LayoutGrid size={10} />,
   servermap: <Activity size={10} />,
   collab: <Users size={10} />,
   editor: <Edit3 size={10} />,
@@ -56,6 +58,7 @@ const menuGroups: MenuGroup[] = [
     items: [
       { type: "ssh", label: "SSH", desc: "Remote terminal sessions" },
       { type: "sftp", label: "SFTP", desc: "File transfer" },
+      { type: "rdp", label: "RDP", desc: "Remote Desktop launcher" },
       { type: "servermap", label: "Server Map", desc: "Network discovery" },
       { type: "collab", label: "Collaboration", desc: "Share sessions" },
     ],

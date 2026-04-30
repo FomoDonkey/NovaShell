@@ -9,6 +9,7 @@ import { SessionDocPanel } from "./SessionDocPanel";
 
 const SSHPanel = lazy(() => import("./SSHPanel").then(m => ({ default: m.SSHPanel })));
 const SFTPPanel = lazy(() => import("./SFTPPanel").then(m => ({ default: m.SFTPPanel })));
+const RDPPanel = lazy(() => import("./RDPPanel").then(m => ({ default: m.RDPPanel })));
 const InfraMonitorPanel = lazy(() => import("./InfraMonitorPanel").then(m => ({ default: m.InfraMonitorPanel })));
 const HackingPanel = lazy(() => import("./HackingPanel").then(m => ({ default: m.HackingPanel })));
 const ServerMapPanel = lazy(() => import("./ServerMapPanel").then(m => ({ default: m.ServerMapPanel })));
@@ -26,6 +27,7 @@ export function PanelContainer({ panelType }: { panelType: PanelTabType }) {
     <div className="panel-tab-content">
       {panelType === "ssh" && <Suspense fallback={<LazyFallback />}><SSHPanel /></Suspense>}
       {panelType === "sftp" && <Suspense fallback={<LazyFallback />}><SFTPPanel /></Suspense>}
+      {panelType === "rdp" && <Suspense fallback={<LazyFallback />}><RDPPanel /></Suspense>}
       {panelType === "servermap" && <Suspense fallback={<LazyFallback />}><ServerMapPanel /></Suspense>}
       {panelType === "editor" && <EditorPanel />}
       {panelType === "debug" && <Suspense fallback={<LazyFallback />}><DebugPanel /></Suspense>}

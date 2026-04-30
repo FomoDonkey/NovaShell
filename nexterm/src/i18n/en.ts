@@ -214,6 +214,31 @@ export const en: Record<string, any> = {
     newTab: "New Terminal Tab",
   },
 
+  // RDP Panel — Remote Desktop launcher
+  rdp: {
+    connections: "RDP Connections",
+    addConnection: "Add Connection",
+    connectionName: "Connection Name",
+    myDesktop: "My Desktop",
+    hostIp: "Host / IP",
+    port: "Port",
+    username: "Username",
+    domain: "Domain",
+    domainPlaceholder: "(optional)",
+    password: "Password",
+    passwordPlaceholder: "Enter password...",
+    saveKeychain: "Save in system keychain",
+    dontSave: "Don't save password",
+    display: "Display",
+    fullscreen: "Fullscreen",
+    useMultimon: "Use all monitors",
+    adminSession: "Admin (console) session",
+    enterPassword: "Enter password for",
+    keychainSavedTitle: "Password saved in system keychain",
+    noConnectionsYet: "No RDP connections yet.",
+    clickToAdd: "Click + to add one.",
+  },
+
   // SFTP Panel
   sftp: {
     title: "SFTP File Transfer",

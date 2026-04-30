@@ -1,5 +1,16 @@
 # NovaTerm - Lessons Learned
 
+## RDP One-Click Launcher — System Client, Not Embedded
+- Embedding an RDP client (FreeRDP, web RDP) is weeks of work. The right MVP is a launcher that opens the platform's native client (`mstsc.exe` on Windows, Microsoft Remote Desktop on macOS via `.rdp` file + `open -a`, `xfreerdp` on Linux).
+- On Windows, `mstsc.exe` only autoreads credentials it finds under the `TERMSRV/<host>` Generic credential. Inject them with `cmdkey /generic:TERMSRV/<host> /user:<user> /pass:<pass>` BEFORE launching mstsc, then DELETE them after a delay (10s safely covers slow handshakes).
+- **Probe before injecting**: a user may already have a manual credential under `TERMSRV/<host>` from prior Windows usage. Always run `cmdkey /list:TERMSRV/<host>` first; if an entry exists, skip injection AND skip the cleanup-delete (otherwise we destroy the user's pre-existing cred). Locale-safe heuristic: count occurrences of literal `TERMSRV/<host>` in stdout — appears once in header, twice when an entry's detail block is present (`s.matches(&needle).count() > 1`). Avoid parsing localized field labels like `Target:`/`Type:`.
+- Track `we_injected: bool` per launch so cleanup only deletes credentials WE created. Concurrent connects to the same host fall through the probe naturally: second click sees the cred we just inserted, skips inject, skips cleanup. First click's 10s timer eventually deletes.
+- For resolution / fullscreen / multimon, write a temp `.rdp` file (`screen mode id:i:2` for fullscreen, `desktopwidth:i:N`). **Use CRLF line endings** in `.rdp` files — modern mstsc tolerates LF but older Windows / macOS Microsoft Remote Desktop are stricter.
+- Use `CommandExt::creation_flags(CREATE_NO_WINDOW=0x08000000)` on the `cmdkey` calls to avoid the console window flash on Windows (same pattern as ghost-window git fix).
+- macOS: don't use `rdp://<key>=<val>&<key>=<val>` URLs — the host/user fields can inject extra params (e.g. `&full address=s:attacker.com` reroutes the session). Write a `.rdp` file and run `open -a "Microsoft Remote Desktop" path.rdp` instead.
+- Linux xfreerdp: never pass `/p:<password>` on argv — visible to any local user via `/proc/<pid>/cmdline`. Use `/from-stdin` and pipe the password via `child.stdin`.
+- Input validation: reject NUL/CR/LF/`"` everywhere; reject `\` and `/` in host; reject `\` in username when `domain` is non-empty (otherwise `format!("{}\\{}", domain, username)` produces `dom1\dom2\user` which mstsc misparses).
+
 ## Audit Discipline — Verify Every Agent Finding Before Acting
 - Sub-agent audits produce a high false-positive rate (~70% in this codebase). Common false positives:
   - **"Zustand array mutation"** — flagged on `.length =` / `.splice()` calls that operate on a FRESH local array created via `[...s.foo, ...]`, not on state. These are safe.
@@ -8,6 +19,13 @@
   - **"stale closure"** — when the closed-over variable is captured at effect-time and the effect re-runs on dependency change, it's not stale.
   - **"PTY reader zombie"** — intentional pattern: ConPTY blocks `read()` until master is dropped (which happens after `Drop::drop` returns).
 - Rule: every agent finding must be verified by reading the cited file:line. Do NOT fix on faith. Track confirmed-vs-rejected so future audits don't re-litigate the same false positives.
+
+## libssh2 on Windows — Two Features Required for OpenSSL Backend
+- `vendored-openssl` alone only COMPILES OpenSSL from source. It does NOT tell libssh2 to use it.
+- `openssl-on-win32` is also required — it sets `LIBSSH2_OPENSSL` in libssh2-sys's build.rs. Without it, build.rs defines `LIBSSH2_WINCNG` even when OpenSSL is compiled.
+- WinCNG does NOT support ed25519. All v3.3.4–v3.3.6 had OpenSSL compiled but unused because `openssl-on-win32` was missing. v3.3.7 fixed this.
+- `userauth_pubkey_memory` hangs on Windows when libssh2 is compiled with WinCNG (v3.3.5 regression). Stick with `userauth_pubkey_file` which errors cleanly instead of hanging.
+- CI on windows-latest needs `PERL` env var pointing to `C:\Strawberry\perl\bin\perl.exe` because Git Bash's Perl lacks `Locale::Maketext::Simple`. `GITHUB_PATH` alone doesn't survive Git Bash's PATH reshuffling.
 
 ## libssh2 Private Keys — Normalize Before Writing to Temp File
 - Error `public key auth:[session(-1)] unknown error` from libssh2 is a generic parse failure. On Windows the usual cause is the textarea/file-upload adding CRLF line endings, or leading/trailing whitespace, or a missing trailing newline. libssh2 is strict: it needs LF-only + trailing `\n` + no leading whitespace.
