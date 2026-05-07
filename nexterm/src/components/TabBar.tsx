@@ -2,7 +2,7 @@ import { useState, useRef, useEffect, useCallback } from "react";
 import { createPortal } from "react-dom";
 import {
   Plus, X, Users, Share2, Monitor, FolderSync, Activity, Terminal,
-  Edit3, Bug, Sparkles, FileText, Shield, Gauge, LayoutGrid, HardDrive,
+  Edit3, Bug, Sparkles, FileText, Shield, Gauge, LayoutGrid, HardDrive, Code2,
 } from "lucide-react";
 import { useAppStore } from "../store/appStore";
 import type { PanelTabType, SSHConnection } from "../store/appStore";
@@ -30,6 +30,7 @@ const panelIconMap: Record<PanelTabType, React.ReactNode> = {
   hacking: <Shield size={14} />,
   infra: <Gauge size={14} />,
   backups: <HardDrive size={14} />,
+  code: <Code2 size={14} />,
 };
 
 const panelTabIconMap: Record<PanelTabType, React.ReactNode> = {
@@ -45,6 +46,7 @@ const panelTabIconMap: Record<PanelTabType, React.ReactNode> = {
   hacking: <Shield size={10} />,
   infra: <Gauge size={10} />,
   backups: <HardDrive size={10} />,
+  code: <Code2 size={10} />,
 };
 
 interface MenuGroup {
@@ -66,6 +68,7 @@ const menuGroups: MenuGroup[] = [
   {
     label: "Tools",
     items: [
+      { type: "code", label: "Code Agents", desc: "Launch Claude/Gemini/Aider on local or SSH" },
       { type: "editor", label: "Editor", desc: "Code editor" },
       { type: "debug", label: "Debug", desc: "Logs & analysis" },
       { type: "ai", label: "AI Assistant", desc: "Local AI chat" },

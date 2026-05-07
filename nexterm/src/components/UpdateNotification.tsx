@@ -237,20 +237,34 @@ export const UpdateNotification = memo(function UpdateNotification() {
 
   const relaunchApp = useCallback(async () => {
     try {
+      console.log("[Updater] Restart Now clicked, pending update:", !!pendingUpdateRef.current);
+
       // Install the previously downloaded update, then exit so the
       // NSIS installer can replace files and restart the app.
       if (pendingUpdateRef.current) {
+        console.log("[Updater] Calling update.install() — spawning NSIS installer...");
         await pendingUpdateRef.current.install();
+        console.log("[Updater] install() returned. Waiting 1500ms grace period so the NSIS subprocess is fully spawned and attached before we release the .exe lock.");
+        // Critical: without this delay, exit(0) below sometimes runs before
+        // the NSIS subprocess is actually spawned & detached. Symptoms:
+        // "update succeeds" toast, app closes, but reopening shows old
+        // version because NSIS never actually replaced the .exe.
+        await new Promise((r) => setTimeout(r, 1500));
       }
+
+      console.log("[Updater] Calling exit(0) — releasing .exe lock so NSIS can replace files.");
       const { exit } = await getProcess();
       await exit(0);
     } catch (e) {
-      // Fallback: try relaunch if install+exit failed
+      console.error("[Updater] install + exit failed:", e);
+      setStatus({ phase: "error", message: `Install failed: ${String(e)}. Try downloading the installer manually from GitHub.` });
+      // Fallback: try relaunch if install+exit failed (last resort —
+      // relaunch starts the OLD binary but at least the app comes back up).
       try {
         const { relaunch } = await getProcess();
         await relaunch();
       } catch (e2) {
-        setStatus({ phase: "error", message: `Relaunch failed: ${String(e2)}` });
+        setStatus({ phase: "error", message: `Both install and relaunch failed: ${String(e2)}. Download the installer from github.com/FomoDonkey/NovaShell/releases` });
       }
     }
   }, []);

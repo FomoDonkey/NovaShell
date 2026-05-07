@@ -13,7 +13,7 @@ export interface CustomThemeColors {
   terminalCursor: string;
 }
 export type SidebarTab = "history" | "snippets" | "preview" | "plugins" | "stats";
-export type PanelTabType = "ssh" | "sftp" | "rdp" | "editor" | "ai" | "debug" | "hacking" | "infra" | "collab" | "servermap" | "docs" | "backups";
+export type PanelTabType = "ssh" | "sftp" | "rdp" | "editor" | "ai" | "debug" | "hacking" | "infra" | "collab" | "servermap" | "docs" | "backups" | "code";
 export type AppLanguage = "en" | "es";
 
 // === Backup Manager Types ===
@@ -149,6 +149,30 @@ export interface Tab {
   shellType: string;
   sessionId: string | null;
   sshConnectionId?: string; // If set, this terminal tab is an SSH session
+  // One-shot command sent to the shell once it has spawned. Used by the Code
+  // panel to launch an AI agent inside a fresh terminal. TerminalPanel reads
+  // it after spawn, writes it via the existing write-queue, then clears it.
+  initialCommand?: string;
+}
+
+// === Code Panel — launchable AI coding agents ===
+export type CodeEditMode = "manual" | "auto-accept" | "plan";
+
+export interface CodeSession {
+  id: string;
+  name: string;
+  // Where to run the agent: a local PTY or an SSH connection
+  target: { kind: "local" } | { kind: "ssh"; sshConnectionId: string };
+  agentId: string;       // matches CODE_AGENTS[].id
+  workingDir: string;    // empty string = home dir
+  // How the agent should treat edits/commands when launched. Maps to a CLI
+  // flag per agent (Claude --dangerously-skip-permissions, Gemini --yolo, etc).
+  // Default 'manual' = ask before every edit/command (the agent's normal default).
+  editMode: CodeEditMode;
+  lastUsed: number | null;
+  // Detection cache (UI hint only — never trusted as ground truth):
+  installedHint?: "yes" | "no" | "unknown";
+  installedCheckedAt?: number;
 }
 
 export type SnippetRunMode = "stop-on-error" | "run-all";
@@ -425,6 +449,7 @@ interface PersistedConfig {
   snippetFolders?: SnippetFolder[];
   sshConnections?: Array<Omit<SSHConnection, "status" | "sessionId" | "errorMessage" | "sessionPassword">>;
   rdpConnections?: Array<Omit<RDPConnection, "status" | "errorMessage" | "sessionPassword">>;
+  codeSessions?: CodeSession[];
   plugins?: PluginEntry[];
   history?: HistoryEntry[];
   debugPersist?: boolean;
@@ -468,6 +493,7 @@ function buildPersistedConfig(): PersistedConfig {
     rdpConnections: s.rdpConnections.length > 0
       ? s.rdpConnections.map(({ status, errorMessage, sessionPassword, ...rest }) => rest)
       : undefined,
+    codeSessions: s.codeSessions.length > 0 ? s.codeSessions : undefined,
     plugins: s.plugins,
     history: s.history.slice(0, 200).map(({ screenshot, ...rest }) => rest),
     debugPersist: s.debugPersist,
@@ -546,8 +572,8 @@ interface AppState {
 
   tabs: Tab[];
   activeTabId: string;
-  addTab: (shell?: string) => void;
-  addSSHTab: (connectionId: string) => void;
+  addTab: (shell?: string, initialCommand?: string) => void;
+  addSSHTab: (connectionId: string, initialCommand?: string) => void;
   openPanelTab: (panelType: PanelTabType) => void;
   closeTab: (id: string) => void;
   setActiveTab: (id: string) => void;
@@ -640,6 +666,13 @@ interface AppState {
   addRDPConnection: (conn: Omit<RDPConnection, "id" | "status">) => void;
   updateRDPConnection: (id: string, updates: Partial<RDPConnection>) => void;
   removeRDPConnection: (id: string) => void;
+
+  // Code panel — AI agent launch sessions
+  codeSessions: CodeSession[];
+  addCodeSession: (sess: Omit<CodeSession, "id" | "lastUsed">) => void;
+  updateCodeSession: (id: string, updates: Partial<CodeSession>) => void;
+  removeCodeSession: (id: string) => void;
+  launchCodeSession: (id: string, agentLaunchCmd: string) => void;
   // Cross-component signal: when set, SSHPanel auto-triggers startConnect
   // for this connection (opens password prompt if needed). Used by TabBar
   // and TerminalPanel to recover from "no credentials" on saved connections.
@@ -816,16 +849,16 @@ export const useAppStore = create<AppState>((set, get) => ({
   tabs: [{ id: "tab-0", title: "Terminal 1", type: "terminal" as const, shellType: navigator.platform.startsWith("Win") ? "powershell.exe" : "/bin/bash", sessionId: null }],
   activeTabId: "tab-0",
 
-  addTab: (shell = navigator.platform.startsWith("Win") ? "powershell.exe" : "/bin/bash") => {
+  addTab: (shell = navigator.platform.startsWith("Win") ? "powershell.exe" : "/bin/bash", initialCommand) => {
     tabCounter++;
     const id = `tab-${tabCounter}`;
     set((s) => ({
-      tabs: [...s.tabs, { id, title: `Terminal ${s.tabs.length + 1}`, type: "terminal" as const, shellType: shell, sessionId: null }],
+      tabs: [...s.tabs, { id, title: `Terminal ${s.tabs.length + 1}`, type: "terminal" as const, shellType: shell, sessionId: null, initialCommand }],
       activeTabId: id,
     }));
   },
 
-  addSSHTab: (connectionId: string) => {
+  addSSHTab: (connectionId: string, initialCommand) => {
     const conn = get().sshConnections.find((c) => c.id === connectionId);
     if (!conn) return;
     tabCounter++;
@@ -838,6 +871,7 @@ export const useAppStore = create<AppState>((set, get) => ({
         shellType: "",
         sessionId: null,
         sshConnectionId: connectionId,
+        initialCommand,
       }],
       activeTabId: id,
     }));
@@ -855,7 +889,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       ssh: "SSH", sftp: "SFTP", rdp: "RDP", editor: "Editor", ai: "AI Assistant",
       debug: "Debug", hacking: "Hacking", infra: "Infra Monitor",
       collab: "Collaboration", servermap: "Server Map", docs: "Session Docs",
-      backups: "Backup Manager",
+      backups: "Backup Manager", code: "Code Agents",
     };
     set((s) => ({
       tabs: [...s.tabs, { id, title: titles[panelType], type: panelType, shellType: "", sessionId: null }],
@@ -1148,6 +1182,85 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   removeRDPConnection: (id) => {
     set((s) => ({ rdpConnections: s.rdpConnections.filter((c) => c.id !== id) }));
+    scheduleSave();
+  },
+
+  // === Code panel — AI agent launch sessions ===
+  codeSessions: [],
+
+  addCodeSession: (sess) => {
+    const newSess: CodeSession = {
+      ...sess,
+      id: crypto.randomUUID(),
+      lastUsed: null,
+    };
+    set((s) => ({ codeSessions: [...s.codeSessions, newSess] }));
+    scheduleSave();
+  },
+
+  updateCodeSession: (id, updates) => {
+    set((s) => ({
+      codeSessions: s.codeSessions.map((c) => (c.id === id ? { ...c, ...updates } : c)),
+    }));
+    // Skip save when only the install hint or lastUsed changed (lightweight churn)
+    if (updates.name || updates.target || updates.agentId || updates.workingDir !== undefined) {
+      scheduleSave();
+    }
+  },
+
+  removeCodeSession: (id) => {
+    set((s) => ({ codeSessions: s.codeSessions.filter((c) => c.id !== id) }));
+    scheduleSave();
+  },
+
+  launchCodeSession: (id, agentLaunchCmd) => {
+    const sess = get().codeSessions.find((c) => c.id === id);
+    if (!sess) return;
+
+    // Note: agentLaunchCmd already includes the per-mode flag appended by the
+    // caller (CodePanel reads agent.flagsByMode[sess.editMode] and concatenates).
+    // We keep the flag-resolution out of the store so the store has zero
+    // knowledge of the agent catalog.
+
+    // Build a `cd <dir> && <agent>` one-shot. We use POSIX `&&` for SSH
+    // (always Linux/macOS) and `;` on Windows local PowerShell. Empty
+    // working dir → just run the agent.
+    const dir = (sess.workingDir || "").trim();
+    const isLocalWindows = sess.target.kind === "local" && navigator.platform.startsWith("Win");
+    let cmd: string;
+    if (!dir) {
+      cmd = agentLaunchCmd;
+    } else if (isLocalWindows) {
+      cmd = `Set-Location -LiteralPath '${dir.replace(/'/g, "''")}'; ${agentLaunchCmd}`;
+    } else {
+      // POSIX: quote with single quotes, escape single quotes by closing-escape-reopening
+      const safe = dir.replace(/'/g, "'\\''");
+      cmd = `cd '${safe}' && ${agentLaunchCmd}`;
+    }
+
+    if (sess.target.kind === "local") {
+      const shell = navigator.platform.startsWith("Win") ? "powershell.exe" : "/bin/bash";
+      get().addTab(shell, cmd);
+    } else {
+      const sshConnectionId = sess.target.sshConnectionId;
+      const conn = get().sshConnections.find((c) => c.id === sshConnectionId);
+      if (!conn) return; // connection was deleted
+      if (conn.status === "connected") {
+        get().addSSHTab(sshConnectionId, cmd);
+      } else {
+        // SSH session not up yet — spawn the tab (it will trigger SSHPanel's
+        // password/key flow via the existing dead-end recovery path) and the
+        // initialCommand is preserved on the tab until TerminalPanel sends it
+        // after the SSH handshake completes.
+        get().addSSHTab(sshConnectionId, cmd);
+        get().requestSSHConnect(sshConnectionId);
+      }
+    }
+
+    // Stamp lastUsed on the session
+    set((s) => ({
+      codeSessions: s.codeSessions.map((c) => (c.id === id ? { ...c, lastUsed: Date.now() } : c)),
+    }));
     scheduleSave();
   },
 
@@ -1857,6 +1970,13 @@ export const useAppStore = create<AppState>((set, get) => ({
         ...c,
         status: "disconnected" as const,
         errorMessage: undefined,
+      }));
+    }
+    if (config.codeSessions && config.codeSessions.length > 0) {
+      // Default editMode to 'manual' for sessions saved before the field existed
+      updates.codeSessions = config.codeSessions.map((c) => ({
+        ...c,
+        editMode: c.editMode ?? "manual",
       }));
     }
     set(updates);

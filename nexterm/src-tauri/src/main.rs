@@ -619,6 +619,72 @@ fn rdp_connect(
     )
 }
 
+// Run a one-shot shell command for the Code panel (install probe / installer).
+// This bypasses ALLOWED_COMMANDS deliberately: the user is going through an
+// explicit confirmation dialog in the UI before any install command runs, and
+// the probe commands are derived from the in-app agent catalog (not user input).
+// Output combines stdout + stderr so install diagnostics are visible.
+#[tauri::command]
+async fn code_panel_local_exec(command: String, shell: String) -> Result<String, String> {
+    if command.trim().is_empty() {
+        return Err("Empty command".to_string());
+    }
+    if command.contains('\0') {
+        return Err("Command contains NUL byte".to_string());
+    }
+    tokio::task::spawn_blocking(move || {
+        #[cfg(windows)]
+        let output = {
+            use std::os::windows::process::CommandExt;
+            const CREATE_NO_WINDOW: u32 = 0x08000000;
+            let mut cmd = if shell == "powershell" {
+                let mut c = std::process::Command::new("powershell.exe");
+                c.args(["-NoProfile", "-NonInteractive", "-Command", &command]);
+                c
+            } else {
+                let mut c = std::process::Command::new("cmd.exe");
+                c.args(["/C", &command]);
+                c
+            };
+            cmd.stdout(std::process::Stdio::piped())
+               .stderr(std::process::Stdio::piped())
+               .creation_flags(CREATE_NO_WINDOW);
+            cmd.output()
+        };
+
+        #[cfg(not(windows))]
+        let output = {
+            let shell_bin = if shell == "bash" { "bash" } else { "sh" };
+            let mut cmd = std::process::Command::new(shell_bin);
+            cmd.args(["-c", &command])
+               .stdout(std::process::Stdio::piped())
+               .stderr(std::process::Stdio::piped());
+            cmd.output()
+        };
+
+        let out = output.map_err(|e| format!("Failed to spawn shell: {}", e))?;
+        let stdout = String::from_utf8_lossy(&out.stdout);
+        let stderr = String::from_utf8_lossy(&out.stderr);
+        if out.status.success() {
+            // Concatenate stdout + (any stderr) so the caller sees both
+            if stderr.trim().is_empty() {
+                Ok(stdout.to_string())
+            } else {
+                Ok(format!("{}\n{}", stdout, stderr))
+            }
+        } else {
+            // Bubble both streams up so install errors are visible
+            Err(format!("Exit {}: {}\n{}",
+                out.status.code().unwrap_or(-1),
+                stderr.trim(),
+                stdout.trim(),
+            ))
+        }
+    })
+    .await
+    .map_err(|e| format!("Task join failed: {}", e))?
+}
+
 #[tauri::command]
 fn load_app_config() -> Result<String, String> {
     let config_path = get_config_path()?;
@@ -2168,6 +2234,7 @@ fn main() {
             keychain_get_password,
             keychain_delete_password,
             rdp_connect,
+            code_panel_local_exec,
             debug_log_save,
             debug_log_list_sessions,
             debug_log_load_session,

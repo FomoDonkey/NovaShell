@@ -1,5 +1,20 @@
 # NovaTerm - Lessons Learned
 
+## Code Panel — Initial Command Injection into Fresh Terminal
+- To launch an AI agent (Claude Code, Gemini CLI, etc.) inside a freshly spawned PTY/SSH tab, the cleanest pattern is: store an `initialCommand?: string` field on the Tab record, have `addTab`/`addSSHTab` accept it as an optional 2nd arg, and have `TerminalPanel` send it via the existing write queue *after* the shell prompt has appeared. Then clear it from the tab so it doesn't re-fire on remount.
+- Delay timing matters: PowerShell needs ~1200ms after `create_pty_session` (matches the existing 800ms PowerShell init delay + a buffer for the prompt to render). Bash/zsh need ~400ms. SSH needs ~500ms after handshake completes (login banner + prompt).
+- The `try { ... } catch {}` block inside `setupTerminal` is wide — it spans from `getTauriCore()` through the SSH/PTY init paths. `tab` and `invoke` are declared inside the try. The `terminalsRef.current.set(tabId, ...)` call at the bottom of the function is OUTSIDE the try. So initial-command code added near the bottom must re-fetch `tab` from the store and re-import `invoke` via `getTauriCore()`. The `sessionId` variable IS in outer scope (declared at the top of setupTerminal as `let sessionId: string | null = null`).
+- Build the command per shell type: POSIX `cd '<dir>' && <agent>` for SSH and Linux/macOS local, `Set-Location -LiteralPath '...'; <agent>` for Windows PowerShell local. Quote with single-quotes and escape embedded single-quotes with the POSIX `'\''` sequence.
+- For SSH targets where the connection isn't established, use `addSSHTab(connId, initialCommand)` + `requestSSHConnect(connId)` — the existing dead-end-recovery path opens the SSH password prompt, and if the user authenticates, the new tab will pick up the credentials and connect (and then send the initialCommand).
+
+## Code Panel — Local Shell Exec for Install Probes
+- The existing `run_command_output` in main.rs has an ALLOWED_COMMANDS allow-list and runs an exe + args (not a shell). It cannot run install one-liners like `curl ... | sh` or `npm install -g ...`.
+- Pattern: a dedicated `code_panel_local_exec(command, shell)` Tauri command that runs through `powershell.exe -NoProfile -NonInteractive -Command <cmd>` on Windows, `cmd.exe /C <cmd>` for batch, or `sh -c <cmd>`/`bash -c <cmd>` on Unix. Combine stdout+stderr in the result so install diagnostics are visible.
+- Always wrap in `tokio::task::spawn_blocking` since std::process::Command::output() blocks.
+- Use `CREATE_NO_WINDOW=0x08000000` on Windows to prevent console flash (same pattern as the ghost-window git fix).
+- Validate input: reject empty command, reject NUL byte. Don't try to allowlist — the user is going through an in-UI confirmation dialog before any install runs, and the probe commands come from the in-app catalog (not user input).
+- Reject silently if confused — return Err with the exit code + both stderr and stdout snippets so the toast can show real diagnostics.
+
 ## RDP One-Click Launcher — System Client, Not Embedded
 - Embedding an RDP client (FreeRDP, web RDP) is weeks of work. The right MVP is a launcher that opens the platform's native client (`mstsc.exe` on Windows, Microsoft Remote Desktop on macOS via `.rdp` file + `open -a`, `xfreerdp` on Linux).
 - On Windows, `mstsc.exe` only autoreads credentials it finds under the `TERMSRV/<host>` Generic credential. Inject them with `cmdkey /generic:TERMSRV/<host> /user:<user> /pass:<pass>` BEFORE launching mstsc, then DELETE them after a delay (10s safely covers slow handshakes).

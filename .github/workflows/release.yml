@@ -303,12 +303,21 @@ jobs:
           echo "MAC INTEL: $MACOS_INTEL_TAR (sig: ${#MACOS_INTEL_SIG} chars)"
           echo "LINUX: $LINUX_APPIMAGE (sig: ${#LINUX_SIG} chars)"
 
-          # Fetch real release notes from the tag's body on GitHub
+          # Fetch release notes — the GitHub release isn't created yet at this
+          # point (it's created in the NEXT step), so `gh api releases/tags/X`
+          # returns 404. Use the git tag annotation as primary source — that's
+          # the canonical location for release notes anyway.
           RELEASE_NOTES=""
-          RELEASE_NOTES=$(gh api "repos/${REPO}/releases/tags/${TAG}" --jq '.body // ""' 2>/dev/null || echo "")
-          if [ -z "$RELEASE_NOTES" ]; then
-            # Fallback: extract from git tag annotation or commit message
-            RELEASE_NOTES=$(git tag -l --format='%(contents)' "${TAG}" 2>/dev/null | head -50 || echo "")
+          # Need a fresh fetch to see the tag's annotation in this checkout
+          git fetch --tags --force --depth=1 origin "${TAG}" 2>/dev/null || true
+          RELEASE_NOTES=$(git tag -l --format='%(contents)' "${TAG}" 2>/dev/null | head -50 || echo "")
+          # Strip any signature footer (-----BEGIN PGP SIGNATURE-----...) from
+          # signed tags — only keep the human-readable body.
+          RELEASE_NOTES=$(echo "$RELEASE_NOTES" | sed '/-----BEGIN PGP SIGNATURE-----/,$d')
+          # Defense in depth: if for any reason notes look like a JSON error
+          # (e.g. "Not Found", "status":"404"), discard them.
+          if echo "$RELEASE_NOTES" | grep -qE '"status":\s*"40[0-9]"|"message":\s*"Not Found"'; then
+            RELEASE_NOTES=""
           fi
           if [ -z "$RELEASE_NOTES" ]; then
             RELEASE_NOTES="Bug fixes, performance improvements, and new features."

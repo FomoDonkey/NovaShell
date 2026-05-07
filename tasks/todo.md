@@ -301,7 +301,42 @@
 - [x] i18n: en + es keys for rdp.*
 - [x] TypeScript + Rust compilation verified
 
+## Completed (Code panel — AI agent launcher, like Claude Desktop's Code tab)
+- [x] Catalog: src/data/codeAgents.ts — 6 agents (Claude Code, Codex, Gemini CLI, OpenCode, Aider, Qwen) with cost tier (free/free-tier/byok), launch/check/install commands per OS, docs URL
+- [x] Store: CodeSession type (target Local|SSH, agentId, workingDir, lastUsed), codeSessions[] state + add/update/remove actions
+- [x] Store: launchCodeSession(id, agentLaunchCmd) — builds `cd <dir> && <agent>` (POSIX) or `Set-Location ...; <agent>` (Windows), routes to Local PTY or SSH tab; fallback via requestSSHConnect when SSH disconnected
+- [x] Store: persisted in PersistedConfig (codeSessions in build/hydrate/config)
+- [x] Store: 'code' added to PanelTabType + openPanelTab title
+- [x] Store: Tab interface gets initialCommand?: string for one-shot agent launch
+- [x] Store: addTab(shell, initialCommand?) and addSSHTab(connId, initialCommand?) accept optional command
+- [x] TerminalPanel: PTY path sends initialCommand after spawn (1200ms PowerShell / 400ms bash); re-fetches tab+invoke since try-block scope
+- [x] TerminalPanel: SSH path sends initialCommand after handshake (500ms delay)
+- [x] CodePanel.tsx: agent reference strip with badges, form (target, agent, working dir), session cards with detect/launch/install/edit/delete
+- [x] CodePanel: install detection (POSIX `command -v` for SSH, PowerShell Get-Command for local Windows)
+- [x] CodePanel: one-click install with confirmation dialog showing the exact command before run
+- [x] CodePanel: install result toast (success/failure with output excerpt)
+- [x] Rust: code_panel_local_exec(command, shell) — runs PowerShell/cmd/sh one-shot with stdout+stderr capture; CREATE_NO_WINDOW on Windows; explicit confirm in UI before any install
+- [x] Rust: registered in invoke_handler
+- [x] PanelContainer: lazy-load CodePanel on panelType === "code"
+- [x] TabBar: Code2 icon in panelIconMap + panelTabIconMap; "Code Agents" entry in Tools menu
+- [x] i18n: code.* keys in en.ts + es.ts (~30 keys)
+- [x] TypeScript compile clean
+- [x] Rust compile clean (cargo check exit 0)
+
+## Completed (Code panel — edit acceptance mode like Claude Desktop)
+- [x] CodeAgent: flagsByMode map per agent (Claude --dangerously-skip-permissions / --permission-mode plan, Codex --full-auto, Gemini/Qwen --yolo, Aider --yes-always, OpenCode TUI-only)
+- [x] CodeSession: editMode field ("manual" | "auto-accept" | "plan"), default "manual", persisted
+- [x] Hydration: legacy sessions without editMode get default "manual" on load
+- [x] Form: 3-button selector with icons (Hand/Zap/Eye) + color coding + per-agent support disabled state
+- [x] Card: clickable mode pill with chevron → dropdown overlay shows all modes with descriptions and current marker
+- [x] Launch: buildLaunchCmd appends per-mode flag → `claude --dangerously-skip-permissions` for auto on Claude
+- [x] Unsupported modes per agent are visually disabled with tooltip
+- [x] Outside-click + Escape close the dropdown
+- [x] i18n: 8 new keys (editMode + 3 mode labels + 3 mode descriptions + notSupported) in en.ts and es.ts
+- [x] TypeScript compile clean, Vite build clean
+
 ## Pending
+- [ ] Test Code panel end-to-end: install Claude Code locally + run it, install Gemini CLI on a remote SSH server
 - [ ] Test Collaborative Terminal with two NovaShell instances on LAN
 - [ ] Test Cross-Server Navigation with real SSH servers
 - [ ] Test Infrastructure Monitor with real SSH servers

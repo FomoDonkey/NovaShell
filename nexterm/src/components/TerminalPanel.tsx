@@ -669,6 +669,18 @@ export function TerminalPanel() {
                 disposables, unlisteners,
               });
               terminal.write(`\x1b[32m[NovaShell]\x1b[0m Connected to ${conn.name}\r\n`);
+
+              // One-shot initial command (used by Code panel to launch an AI
+              // agent inside the fresh SSH session). Delay 500ms so the remote
+              // shell has finished its login banner / prompt before we type.
+              if (tab.initialCommand) {
+                const cmdToSend = tab.initialCommand;
+                setTimeout(() => {
+                  invoke("ssh_write", { sessionId: sshSessionId, data: cmdToSend + "\r" }).catch(() => {});
+                }, 500);
+                updateTab(tabId, { initialCommand: undefined });
+              }
+
               return; // Skip normal PTY initialization
             } catch (e) {
               terminal.write(`\r\n\x1b[31m[NovaShell]\x1b[0m SSH connection failed: ${e}\r\n`);
@@ -993,6 +1005,24 @@ export function TerminalPanel() {
         disposables,
         unlisteners,
       });
+
+      // One-shot initial command (used by Code panel to launch an AI agent
+      // inside a fresh local PTY). Wait for the shell prompt to appear —
+      // PowerShell needs ~800ms (matches the existing init delay), bash ~300ms.
+      // tab/invoke aren't in scope here (they live inside the try block above),
+      // so we re-fetch both — sessionId IS in the outer scope.
+      const ptyTab = useAppStore.getState().tabs.find((t) => t.id === tabId);
+      if (ptyTab?.initialCommand && sessionId) {
+        const cmdToSend = ptyTab.initialCommand;
+        const initDelay = (ptyTab.shellType || "").toLowerCase().includes("powershell") ? 1200 : 400;
+        const sidSnapshot = sessionId;
+        setTimeout(() => {
+          getTauriCore().then(({ invoke }) => {
+            invoke("write_to_pty", { sessionId: sidSnapshot, data: cmdToSend + "\r" }).catch(() => {});
+          }).catch(() => {});
+        }, initDelay);
+        updateTab(tabId, { initialCommand: undefined });
+      }
     },
     [updateTab, fetchSuggestions]
   );
