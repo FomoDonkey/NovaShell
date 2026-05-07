@@ -1222,20 +1222,41 @@ export const useAppStore = create<AppState>((set, get) => ({
     // We keep the flag-resolution out of the store so the store has zero
     // knowledge of the agent catalog.
 
-    // Build a `cd <dir> && <agent>` one-shot. We use POSIX `&&` for SSH
-    // (always Linux/macOS) and `;` on Windows local PowerShell. Empty
-    // working dir → just run the agent.
-    const dir = (sess.workingDir || "").trim();
+    // Build a one-shot launch command. If the configured working directory
+    // doesn't exist on the target host, we MUST still launch the agent —
+    // otherwise the previous `cd && agent` form short-circuited and left the
+    // user at a bare prompt (see the SSH "qwen" report on a remote VM where
+    // /var/www/pruebaIA didn't exist). We now print a yellow `[NovaShell]`
+    // warning and run the agent from $CWD.
+    //
+    // POSIX branch covers SSH (always Linux/macOS) AND local Linux/macOS.
+    // PowerShell branch only covers local Windows.
+    // Empty working dir → just run the agent.
+    const dir = (sess.workingDir || "").replace(/[\r\n]/g, "").trim();
     const isLocalWindows = sess.target.kind === "local" && navigator.platform.startsWith("Win");
     let cmd: string;
     if (!dir) {
       cmd = agentLaunchCmd;
     } else if (isLocalWindows) {
-      cmd = `Set-Location -LiteralPath '${dir.replace(/'/g, "''")}'; ${agentLaunchCmd}`;
+      // PowerShell single-quote escape doubles `'`. Test-Path before
+      // Set-Location so a missing path produces a friendly warning instead
+      // of a red `Cannot find path` error AND the agent still launches.
+      const psSafe = dir.replace(/'/g, "''");
+      cmd =
+        `$__nsDir = '${psSafe}'; ` +
+        `if (Test-Path -LiteralPath $__nsDir) { Set-Location -LiteralPath $__nsDir } ` +
+        `else { Write-Host "[NovaShell] Working dir '$__nsDir' not found - launching from current directory." -ForegroundColor Yellow }; ` +
+        agentLaunchCmd;
     } else {
-      // POSIX: quote with single quotes, escape single quotes by closing-escape-reopening
+      // POSIX: single-quote escape via close-escape-reopen ('\''). The cd is
+      // wrapped with `|| printf` so the agent ALWAYS runs even when the dir
+      // is missing on the remote host (avoids the `&&` short-circuit bug).
       const safe = dir.replace(/'/g, "'\\''");
-      cmd = `cd '${safe}' && ${agentLaunchCmd}`;
+      cmd =
+        `__ns_dir='${safe}'; ` +
+        `cd "$__ns_dir" 2>/dev/null || ` +
+        `printf '\\033[33m[NovaShell]\\033[0m Working dir %s not found - launching from current directory.\\r\\n' "$__ns_dir"; ` +
+        agentLaunchCmd;
     }
 
     if (sess.target.kind === "local") {
