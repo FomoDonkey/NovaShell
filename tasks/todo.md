@@ -335,7 +335,18 @@
 - [x] i18n: 8 new keys (editMode + 3 mode labels + 3 mode descriptions + notSupported) in en.ts and es.ts
 - [x] TypeScript compile clean, Vite build clean
 
+## Completed (Code panel — robust working-dir handling)
+- [x] launchCodeSession: replace `cd '<dir>' && <agent>` with `cd ... 2>/dev/null || printf <warn>; <agent>` so the agent ALWAYS launches even if the configured working dir doesn't exist on the remote host
+- [x] PowerShell branch: Test-Path guard before Set-Location, yellow `[NovaShell]` warning instead of the red `Cannot find path` error
+- [x] Strip CR/LF from working dir at command-build time (defense in depth against pasted multi-line input)
+- [x] TypeScript typecheck passes clean
+
+## Completed (SSH key identity — v3.3.11)
+- [x] Investigate `Public key auth failed: [Session(-18)] Username/PublicKey combination invalid` (Srv-FR-S2SX-PR1, OpenSSH 10.2p1, RSA PEM key): NovaShell verified OK against OpenSSH 9.6 + 10.2p1; the error = server rejects that key for that user. Root cause here: the connection had a DIFFERENT key pair saved than the one that worked
+- [x] Show the loaded key's fingerprint/comment under the Private Key textarea (`src/utils/sshKeyFingerprint.ts` + SSHPanel): type, bits, `SHA256:…`, comment, "encrypted" badge, and red warnings for .ppk / public key / corrupted content. Verified: fingerprints match `ssh-keygen -lf` for RSA-PEM, RSA-OpenSSH, ed25519, ecdsa and encrypted keys; checked live in the UI (EN + ES, and at the 260px minimum panel width); `tsc --noEmit` and `npm run build` clean
+
 ## Pending
+- [ ] (Proposal) Friendlier SSH error for -18: "El servidor rechazó esta clave para el usuario X" + hints (authorized_keys, permisos, usuario)
 - [ ] Test Code panel end-to-end: install Claude Code locally + run it, install Gemini CLI on a remote SSH server
 - [ ] Test Collaborative Terminal with two NovaShell instances on LAN
 - [ ] Test Cross-Server Navigation with real SSH servers

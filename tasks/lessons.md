@@ -1,5 +1,27 @@
 # NovaTerm - Lessons Learned
 
+## SSH `[Session(-18)]` en Srv-FR-S2SX-PR1: la clave GUARDADA no era la del fichero que funcionaba
+- Caso real (2026-09-18): `ssh -i "C:\Users\edgar\.ssh\s2sx pr1\id_rsa"` entraba, NovaShell no. Causa: en `%APPDATA%\novashell\config.json` la conexión tenía guardada OTRA clave (`~/.ssh/techx_cloudfr_id_rsa`, fingerprint `bZSeMAtG5Rs…`) en vez de la buena (`LIM3ZMxFsJi2…`). Se cargó el fichero equivocado en el formulario.
+- Verificado contra el servidor real con el código de NovaShell: clave guardada → error `-18` exacto; clave correcta → `AUTH OK`.
+- Diagnóstico rápido la próxima vez: `ssh-keygen -lf <fichero>` vs la clave de `config.json` (`sshConnections[].privateKey`). Si los fingerprints no coinciden, es eso — no hace falta tocar nada del backend.
+- Mejora pendiente de UI: mostrar el fingerprint/comment de la clave cargada junto al textarea, para ver de un vistazo QUÉ clave hay guardada.
+
+## SSH `[Session(-18)] Username/PublicKey combination invalid` = el SERVIDOR rechaza la clave (no es bug de NovaShell)
+- libssh2 lo emite cuando el servidor responde USERAUTH_FAILURE a la *consulta* de clave pública (antes de firmar): esa clave pública no está autorizada para ese usuario en ese servidor.
+- Verificado 2026-09-18 con un harness con el código REAL (`prepare_private_key` + `configure_ssh_algorithms` + `userauth_pubkey_file`, ssh2 0.9.5 / libssh2 1.11.1 + OpenSSL vendored) contra OpenSSH 9.6 y 10.2p1: una clave RSA PEM (`BEGIN RSA PRIVATE KEY`) autentica OK con `rsa-sha2-512`; la MISMA clave con un usuario no autorizado reproduce el error exacto.
+- NO es el problema de SHA-1 `ssh-rsa`: libssh2 1.11.1 antepone solo `ext-info-c,kex-strict-c-v00@openssh.com` a nuestra lista Kex de `method_pref`, así que recibe `server-sig-algs` y usa rsa-sha2-512/256.
+- Diagnóstico para el usuario: `ssh -i <clave> -p <puerto> user@host` (si OpenSSH también falla, el problema está en el servidor), comparar `ssh-keygen -lf <clave>` con `ssh-keygen -lf ~/.ssh/authorized_keys` en el servidor, revisar permisos (`~/.ssh` 700, `authorized_keys` 600) y `journalctl -u ssh`.
+- Harness en Windows: compilar con `CARGO_TARGET_DIR=nexterm/src-tauri/target` (reutiliza el OpenSSL ya compilado; la ruta larga del scratchpad rompe el `Configure` de openssl-src) y enlazar `advapi32` en un build.rs.
+- WSL: `wsl.exe -- bash -c '...'` pierde las comillas igual que el SSH desde PowerShell → usar siempre un script (`wsl.exe -d Ubuntu -- bash /mnt/c/.../s.sh`, con `MSYS_NO_PATHCONV=1` desde Git Bash).
+
+## Code Panel — Always Launch Agent Even If Working Dir Is Missing
+- The `cd '<dir>' && <agent>` form short-circuits when `<dir>` doesn't exist on the target host. Symptom: SSH connects fine, the user sees `bash: cd: /var/www/foo: No such file or directory`, and `qwen`/`claude`/etc never starts.
+- Fix pattern (POSIX): `__ns_dir='<safe>'; cd "$__ns_dir" 2>/dev/null || printf '\033[33m[NovaShell]\033[0m Working dir %s not found - launching from current directory.\r\n' "$__ns_dir"; <agent>` — the `||` runs only on cd failure, the `; <agent>` runs unconditionally. Match existing `[NovaShell]` ANSI yellow convention from TerminalPanel.tsx so the warning blends with the existing client-side messages.
+- Fix pattern (Windows PowerShell): `$__nsDir = '<escaped>'; if (Test-Path -LiteralPath $__nsDir) { Set-Location -LiteralPath $__nsDir } else { Write-Host "[NovaShell] ..." -ForegroundColor Yellow }; <agent>` — `Test-Path` first avoids the red `Cannot find path` error from `Set-Location` on a missing dir.
+- Always strip `\r\n` from `workingDir` before building the command. Browser inputs don't usually pass newlines, but a paste can — and a stray `\n` in the `cd` line would split the command and break the launch.
+- DO NOT fall back to `cd ~` on miss. Just print the warning and run the agent from wherever the shell currently is. Forcing `cd ~` overrides whatever the user's interactive shell startup files set as PWD, and on SSH the shell already lands in `$HOME` after login anyway.
+- Single-quote escaping: POSIX uses `'\''` (close-escape-reopen). PowerShell uses `''` (double the quote inside single-quoted strings). Keep the dir variable in a shell variable and reference it as `"$__ns_dir"` / `$__nsDir` so we only escape once and the printf/Write-Host doesn't need to re-escape.
+
 ## Code Panel — Initial Command Injection into Fresh Terminal
 - To launch an AI agent (Claude Code, Gemini CLI, etc.) inside a freshly spawned PTY/SSH tab, the cleanest pattern is: store an `initialCommand?: string` field on the Tab record, have `addTab`/`addSSHTab` accept it as an optional 2nd arg, and have `TerminalPanel` send it via the existing write queue *after* the shell prompt has appeared. Then clear it from the tab so it doesn't re-fire on remount.
 - Delay timing matters: PowerShell needs ~1200ms after `create_pty_session` (matches the existing 800ms PowerShell init delay + a buffer for the prompt to render). Bash/zsh need ~400ms. SSH needs ~500ms after handshake completes (login banner + prompt).

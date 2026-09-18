@@ -26,6 +26,7 @@ import { useT } from "../i18n";
 import type { SSHConnection } from "../store/appStore";
 import { parseTerminalOutput } from "./DebugPanel";
 import { themeColors } from "../utils/themeColors";
+import { describeSshKey, type SshKeyInfo } from "../utils/sshKeyFingerprint";
 
 // Batched async SSH debug log parsing — mirrors TerminalPanel's queueDebugParse
 // Never blocks terminal rendering; buffers data and flushes every 200ms
@@ -172,6 +173,26 @@ export function SSHPanel() {
   const [formPassword, setFormPassword] = useState("");
   const [formKey, setFormKey] = useState("");
   const [formAuthMode, setFormAuthMode] = useState<"password" | "key">("password");
+
+  // Identity of the key currently in the form (type + SHA256 fingerprint).
+  // Shown under the textarea so a wrong key pair is visible BEFORE connecting —
+  // otherwise the server just answers with the opaque
+  // "Username/PublicKey combination invalid", which looks like a server problem.
+  const [keyInfo, setKeyInfo] = useState<SshKeyInfo | null>(null);
+
+  useEffect(() => {
+    if (formAuthMode !== "key" || !formKey.trim()) {
+      setKeyInfo(null);
+      return;
+    }
+    let cancelled = false;
+    describeSshKey(formKey).then((info) => {
+      if (!cancelled) setKeyInfo(info);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [formKey, formAuthMode]);
 
   // Terminal refs
   const termContainerRef = useRef<HTMLDivElement>(null);
@@ -892,6 +913,42 @@ export function SSHPanel() {
                   {t("ssh.orPasteKey")}
                 </span>
               </div>
+
+              {keyInfo && (
+                <div
+                  title={t("ssh.keyFingerprintHint")}
+                  style={{
+                    marginTop: 6,
+                    padding: "5px 8px",
+                    borderRadius: "var(--radius-sm)",
+                    background: "var(--bg-active)",
+                    fontSize: 10,
+                    lineHeight: 1.5,
+                    fontFamily: "var(--font-mono, monospace)",
+                    color: keyInfo.problem === "ppk" || keyInfo.problem === "not-a-private-key"
+                      ? "var(--accent-error)"
+                      : "var(--text-secondary)",
+                    wordBreak: "break-all",
+                  }}
+                >
+                  <Key size={10} style={{ display: "inline", verticalAlign: "middle", marginRight: 4 }} />
+                  {keyInfo.problem === "ppk" ? (
+                    t("ssh.keyPpk")
+                  ) : keyInfo.problem === "not-a-private-key" ? (
+                    t("ssh.keyNotPrivate")
+                  ) : keyInfo.problem === "malformed" ? (
+                    t("ssh.keyMalformed")
+                  ) : (
+                    <>
+                      <b>{keyInfo.type}</b>
+                      {keyInfo.bits ? ` ${keyInfo.bits}` : ""}
+                      {keyInfo.fingerprint ? ` · ${keyInfo.fingerprint}` : ` · ${t("ssh.keyNoFingerprint")}`}
+                      {keyInfo.comment ? ` · ${keyInfo.comment}` : ""}
+                      {keyInfo.encrypted ? ` · ${t("ssh.keyEncrypted")}` : ""}
+                    </>
+                  )}
+                </div>
+              )}
             </div>
           )}
 
