@@ -346,6 +346,7 @@
 - [x] Show the loaded key's fingerprint/comment under the Private Key textarea (`src/utils/sshKeyFingerprint.ts` + SSHPanel): type, bits, `SHA256:…`, comment, "encrypted" badge, and red warnings for .ppk / public key / corrupted content. Verified: fingerprints match `ssh-keygen -lf` for RSA-PEM, RSA-OpenSSH, ed25519, ecdsa and encrypted keys; checked live in the UI (EN + ES, and at the 260px minimum panel width); `tsc --noEmit` and `npm run build` clean
 
 ## Pending
+- [ ] macOS auto-update has NEVER worked (pre-existing, not a regression): `latest.json` ships empty signature+url for `darwin-aarch64` and `darwin-x86_64` in both v3.3.10 and v3.3.11. Cause: Tauri v2 only emits the `.app.tar.gz` updater bundle when `bundle.createUpdaterArtifacts` is true — `"targets": "all"` does NOT include it — so the CI's signing loop finds no file to sign. Fix: set `"createUpdaterArtifacts": true` in `src-tauri/tauri.conf.json`. Windows (NSIS .exe) and Linux (AppImage) are signed fine
 - [ ] (Proposal) Friendlier SSH error for -18: "El servidor rechazó esta clave para el usuario X" + hints (authorized_keys, permisos, usuario)
 - [ ] Test Code panel end-to-end: install Claude Code locally + run it, install Gemini CLI on a remote SSH server
 - [ ] Test Collaborative Terminal with two NovaShell instances on LAN
