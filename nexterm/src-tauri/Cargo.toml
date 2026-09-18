@@ -40,6 +40,16 @@ rand = "0.8"
 [target.'cfg(windows)'.dependencies]
 ssh2 = { version = "0.9", features = ["vendored-openssl", "openssl-on-win32"] }
 
+# macOS Intel is cross-compiled from the Apple Silicon runners, and Homebrew
+# now refuses to install on x86_64 ("Homebrew on macOS is only supported on
+# Apple Silicon processors!"), so there is no prebuilt x86_64 OpenSSL to link
+# against — the CI job died with
+# `OpenSSL library directory does not exist: ["/usr/local/opt/openssl@3/lib"]`.
+# Build OpenSSL from source for this target instead, like the Windows build.
+# Apple Silicon macOS keeps using the system/Homebrew OpenSSL (no feature).
+[target.'cfg(all(target_os = "macos", target_arch = "x86_64"))'.dependencies]
+ssh2 = { version = "0.9", features = ["vendored-openssl"] }
+
 [features]
 default = ["custom-protocol"]
 custom-protocol = ["tauri/custom-protocol"]
